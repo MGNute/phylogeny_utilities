@@ -385,17 +385,7 @@ def collect_garbage():
 ##    myjob.make_raw_fasta()
 ##    myjob.make_sftp_file()
 
-def main3(cfg):
-    # main2(cfg)
-   mypasta=groupOfCompletedPastaRuns(cfg)
-   # mypasta.make_results_sftp_files()
-   mypasta.make_tree_batch_file('get_tree_errors.bat')
-   mypasta.make_alignment_batch_file('get_aln_errors.sh')
-   import subprocess
-   subprocess.call(['bash','get_aln_errors.sh'])
-   # mypasta.assemble_all_results('R_data.txt')
-   # mypasta.assemble_times_results()
-##    collect_garbage()
+
 
 class groupOfCompletedPastaRuns:
     def __init__(self, config=None):
@@ -496,8 +486,8 @@ class groupOfCompletedPastaRuns:
         tf.close()
 
         bf=open(self.pf + self.cfg.get('pasta_batch_config','results_folder')+'bash_sftp_trees_from_cincy.sh','w')
-        bf.write('sftp -b sftp_commands_alignment.txt -oPort=2222 mikenute@192.168.200.20 \n')
-        bf.write('sftp -b sftp_commands_tree.txt -oPort=2222 mikenute@192.168.200.20 \n')
+        # TODO: remove this and put this into the config
+        # TODO: add lines for writing the get statement
 
 
 ##    def read_runs_list(self,runs_list):
@@ -919,6 +909,17 @@ def main():
     mine.make_running_time_results_file('running_times.txt','Windows')
     print 'running times done'
 
+def main3(cfg):
+    # main2(cfg)
+   mypasta=groupOfCompletedPastaRuns(cfg)
+   # mypasta.make_results_sftp_files()
+   mypasta.make_tree_batch_file('get_tree_errors.bat')
+   mypasta.make_alignment_batch_file('get_aln_errors.sh')
+   import subprocess
+   subprocess.call(['bash','get_aln_errors.sh'])
+   # mypasta.assemble_all_results('R_data.txt')
+   # mypasta.assemble_times_results()
+##    collect_garbage()
 
 if __name__ == '__main__':
 ##    main2()
