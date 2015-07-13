@@ -42,7 +42,8 @@ def run_baliphy(set, suffix=''):
     arg9='--name'
     arg10 = output_path
     # subprocess.call([arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8, arg9, arg10])
-    subprocess.call([arg1, arg2, arg5, arg6, arg7, arg8, arg9, arg10])
+    # subprocess.call([arg1, arg2, arg5, arg6, arg7, arg8, arg9, arg10])
+    subprocess.call([arg1, arg2, arg7, arg8, arg9, arg10])
 
 def read_list_from_file(filename='/home/nute2/baliphy_upp_work/input_fasta_list.txt'):
     mylist = open(filename,'r')
