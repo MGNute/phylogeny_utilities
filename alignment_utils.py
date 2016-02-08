@@ -107,23 +107,23 @@ def fastsp_results_folder_to_tab_delimited(folder=None, output_file_path=None):
 
     outfile.close()
 
-def read_from_fasta(self,file_path):
-        output={}
-        fasta=open(file_path,'r')
-        first=True
-        for l in fasta:
-            if l[0]=='>':
-                if first<>True:
-                    output[name]=seq
-                else:
-                    first=False
-                name=l[1:].strip()
-                seq=''
+def read_from_fasta(file_path):
+    output={}
+    fasta=open(file_path,'r')
+    first=True
+    for l in fasta:
+        if l[0]=='>':
+            if first<>True:
+                output[name]=seq
             else:
-                seq=seq + l.strip()
-        output[name]=seq
-        fasta.close()
-        return output
+                first=False
+            name=l[1:].strip()
+            seq=''
+        else:
+            seq=seq + l.strip()
+    output[name]=seq
+    fasta.close()
+    return output
 
 def write_to_fasta(out_file_path=None,fasta_dict=None,subset_keys=None,raw=False):
 

@@ -8,7 +8,13 @@
 # Copyright:   (c) Michael 2015
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
-import os, re, ConfigParser, platform, datetime
+import os
+import re
+import ConfigParser
+import platform
+import datetime
+
+from alignment_utils import fastsp_results_folder_to_tab_delimited, fastsp_read_results_file
 
 
 class pasta_job:
@@ -235,7 +241,7 @@ def main2(cfg):
     runsf = open(prefix + cfg.get('pasta_batch_config', 'results_folder') + 'pasta_job_list.txt', 'w')
     aln_str = cfg.get('data_strings', 'aln_str')
     tree_str = cfg.get('data_strings', 'tree_str')
-    excl_str = cfg.get('data_strings', 'exclude_str')
+    # excl_str = cfg.get('data_strings', 'exclude_str')
     reg1 = re.compile(cfg.get('data_strings', 'reg1_expr'))
     try:
         reg2 = re.compile(cfg.get('data_strings', 'reg2_expr'))
@@ -472,7 +478,7 @@ class groupOfCompletedPastaRuns:
         for line in of:
             args = {}
             a = line.strip().split('\t')
-            print a[0]
+            # print a[0]
             job = a[1].replace('.out.txt', '')
             args['job'] = job
             args['folder'] = a[0]
@@ -495,7 +501,8 @@ class groupOfCompletedPastaRuns:
             if not os.path.exists(self.pf + self.cfg.get('results', 'aln_loc') + self.output_list[i]['aln']):
                 if self.output_list[i]['aln'] <> '':
                     af.write('get ' + self.output_list[i]['folder'] + '/' + self.output_list[i]['aln'] + '\n')
-                    az.write('zip -j all_trees_alns.zip '+self.output_list[i]['folder']+'/' + self.output_list[i]['aln'] + '\n')
+                    # az.write('zip -j all_trees_alns.zip '+self.output_list[i]['folder']+'/' + self.output_list[i]['aln'] + '\n')
+                    az.write(' '+self.output_list[i]['folder']+'/' + self.output_list[i]['aln'] + '')
         af.close()
 
         tree_sftp = self.pf + self.cfg.get('pasta_batch_config', 'results_folder') + 'sftp_commands_tree.txt'
@@ -507,7 +514,8 @@ class groupOfCompletedPastaRuns:
                 if self.output_list[i]['tree_final'] <> '':
                     print self.output_list[i]['tree_final']
                     tf.write('get ' + self.output_list[i]['folder'] + '/' + self.output_list[i]['tree_final'] + '\n')
-                    az.write('zip -j all_trees_alns.zip ' + self.output_list[i]['folder'] + '/' + self.output_list[i]['tree_final'] + '\n')
+                    # az.write('zip -j all_trees_alns.zip ' + self.output_list[i]['folder'] + '/' + self.output_list[i]['tree_final'] + '\n')
+                    az.write(' ' + self.output_list[i]['folder'] + '/' + self.output_list[i]['tree_final'] + '')
         tf.close()
         az.close()
 
@@ -630,6 +638,13 @@ class groupOfCompletedPastaRuns:
         myf.close()
 
     def get_final_alignment_file_name(self, pasta_run, which_os):
+        '''
+        searches through a pasta results folder and returns the file that ist he final alignemtn
+        file.
+        :param pasta_run:
+        :param which_os:
+        :return:
+        '''
         jobn = self.get_pasta_job_name(pasta_run, which_os)
         prefs = self.get_prefix_commands(which_os)
         folder = prefs[2] + self.prefixes['results_prefix'] + pasta_run['results_folder']
@@ -737,12 +752,12 @@ class groupOfCompletedPastaRuns:
         for i in self.output_list.values():
             job = i['job']
             a = job.split("_")
-            args = {'job': job, 'model': a[2], 'set': a[3], 'size': a[4], 'wall_time': i['wall_time']}
+            args = {'job': job, 'model': a[1], 'set': a[2], 'size': a[3], 'wall_time': i['wall_time']}
             str_out0 = str_line0 % args
             treefn = 'tree_error_' + job + '.txt'
             alnfn = 'aln_error_' + job + '.txt'
             str_out1 = str_line1 % read_CompareTree_results_file(treefolder + treefn)
-            str_out2 = str_line2 % read_alignment_results_file(alnfolder + alnfn)
+            str_out2 = str_line2 % fastsp_read_results_file(alnfolder + alnfn)
             rf.write(str_out0 + str_out1 + str_out2)
 
     def assemble_times_results(self, file_name=None):
@@ -855,62 +870,6 @@ def tree_results_folder_to_text(folder=None, output_file_path=None):
         outfile.write(line)
     outfile.close()
 
-
-def read_alignment_results_file(filepath=None):
-    pa, fi = os.path.split(filepath)
-    myargs = {}
-    myargs['file_name'] = fi
-
-    # open the results file
-    textfile = open(filepath, 'r')
-    text = textfile.read()
-    textfile.close()
-
-    # regexes to pull the results
-    file_regex = 'SP-Score (?P<sp>\d+\.\d+[E\-\d]*)[.\n]*Modeler (?P<modeler>\d+\.\d+[E\-\d]*)[.\n]*SPFN (?P<spfn>\d+\.\d+[E\-\d]*)[.\n]*SPFP (?P<spfp>\d+\.\d+[E\-\d]*)[.\n]*Compression (?P<comp>\d+\.\d+[E\-\d]*)[.\n]*TC (?P<tc>\d+\.\d+[E\-\d]*)'
-    file_regex_2 = 'MaxLenNoGap= (?P<maxlen>\d+).*NumSeq= (?P<numseq>\d+).*LenRef= (?P<lenref>\d+).*LenEst= (?P<lenest>\d+).*Cells= (?P<cells>\d+)'
-    fileregs = re.compile(file_regex)
-    fileregs2 = re.compile(file_regex_2)
-
-    vals1list = ['sp', 'modeler', 'spfn', 'spfp', 'comp', 'tc']
-    vals2list = ['maxlen', 'numseq', 'lenref', 'lenest', 'cells']
-    vals1 = fileregs.search(text)
-    vals2 = fileregs2.search(text)
-    for i in vals1list:
-        try:
-            myargs[i] = vals1.group(i)
-        except:
-            myargs[i] = ''
-    for i in vals2list:
-        try:
-            myargs[i] = vals2.group(i)
-        except:
-            myargs[i] = ''
-    return myargs
-
-
-def alignment_results_folder_to_text(folder=None, output_file_path=None):
-    # quick checks on folder string
-    folder = folder.replace('\\', '/') + '/'
-    folder = folder.replace('//', '/')
-
-    # model output line:
-    line_str = '%(file_name)s\t%(sp)s\t%(modeler)s\t%(spfn)s\t%(spfp)s\t%(comp)s\t%(tc)s\t%(maxlen)s\t%(numseq)s\t%(lenref)s\t%(lenest)s\t%(cells)s\t\n'
-
-    outfile = open(output_file_path, 'w')
-    outfile.write(
-        'file_name\tSP-Score\tModeler\tSPFN\tSPFP\tCompression Ratio\tTC\tMaxLenNoGap\tNumSeq\tLenRef\tLenEst\tCells\t\n')
-
-    for i in os.listdir(folder):
-        myargs = {}
-        myargs = read_alignment_results_file(folder + i)
-        outfile.write(line_str % myargs)
-
-    outfile.close()
-
-    pass
-
-
 def get_prefix(os=None):
     if os == None:
         os = platform.system()
@@ -946,7 +905,7 @@ def main():
 
     aln_folder = prefix + my_prefixes['alignment_error_prefix']
     outputfile = prefix + my_prefixes['general_repo_prefix'] + 'alignment_errors_all.txt'
-    alignment_results_folder_to_text(aln_folder, outputfile)
+    fastsp_results_folder_to_tab_delimited(aln_folder, outputfile)
     print 'alignment results done'
 
     mine.make_running_time_results_file('running_times.txt', 'Windows')
@@ -954,27 +913,33 @@ def main():
 
 
 def main3(cfg):
-    main2(cfg)
-    # mypasta = groupOfCompletedPastaRuns(cfg)
-    # mypasta.make_results_sftp_files()
-    # mypasta.make_tree_batch_file('get_tree_errors.bat')
-    # mypasta.make_alignment_batch_file('get_aln_errors.sh')
+    # main2(cfg)
+    mypasta = groupOfCompletedPastaRuns(cfg)
+    mypasta.make_results_sftp_files()
+
+    mypasta.make_tree_batch_file('get_tree_errors.bat')
+    mypasta.make_alignment_batch_file('get_aln_errors.sh')
     # import subprocess
     # subprocess.call(['bash','get_aln_errors.sh'])
-    # mypasta.assemble_all_results('R_data.txt')
+    mypasta.assemble_all_results('R_data.txt')
     # mypasta.assemble_times_results()
 
 ##    collect_garbage()
 
 if __name__ == '__main__':
+    # main2 is for BEFORE all the pasta runs.
     ##    main2()
 
     ##    print platform.system()=='Linux'
     # # config_file=get_prefix()+'/results/homfam/pasta_batch_config.cfg'
     # config_file=get_prefix()+'/results/rnasim_v2/pasta_batch_config.cfg'
-    # config_file = get_prefix() + '/results/rosedna_L_opal_testing/rosedna_L_opal_test1/pasta_batch_config.cfg'
-    # config_file = get_prefix() + '/results/rosedna_L/pasta_batch_config.cfg'
-    config_file=get_prefix()+'/results/16S/pasta_batch_config.cfg'
+    # config_file = get_prefix() + '/results/rosedna_L_opal_testing/rosedna_L_opal_test2/pasta_batch_config.cfg'
+    # config_file = get_prefix() + '/results/rosedna_L_opal_testing/rosedna_L_longestbranch_test3/pasta_batch_config.cfg'
+    config_file = get_prefix() + '/results/rosedna_L/pasta_batch_config.cfg'
+    # config_file=get_prefix()+'/results/16S/pasta_batch_config.cfg'
+    # config_file=get_prefix()+'/results/balibase/pasta_batch_config.cfg'
     cfg = ConfigParser.ConfigParser()
     cfg.read(config_file)
+
+    # main3 is for AFTER all the runs have completed.
     main3(cfg)
