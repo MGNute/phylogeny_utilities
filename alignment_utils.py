@@ -11,7 +11,7 @@
 import platform, os, StringIO
 import re
 import dendropy
-# import numpy as np
+import numpy as np
 # import pasta_output_readers as pouts
 # import utilities
 
@@ -67,7 +67,7 @@ def fastsp_read_results_string(text, ref_file=None, est_file=None):
     # textfile.close()
 
     # regexes to pull the results
-    file_regex = 'SP-Score (?P<sp>\d+\.\d+[E\-\d]*)[.\n]*Modeler (?P<modeler>\d+\.\d+[E\-\d]*)[.\n]*SPFN (?P<spfn>\d+\.\d+[E\-\d]*)[.\n]*SPFP (?P<spfp>\d+\.\d+[E\-\d]*)[.\n]*Compression (?P<comp>\d+\.\d+[E\-\d]*)[.\n]*TC (?P<tc>\d+\.\d+[E\-\d]*)'
+    file_regex = 'SP-Score (?P<sp>\d+\.\d+[E\-\d]*)[.\n]*Modeler (?P<modeler>\d+\.\d+[E\-*\d]*)[.\n]*SPFN (?P<spfn>\d+\.\d+[E\-\d]*)[.\n]*SPFP (?P<spfp>\d+\.\d+[E\-\d]*)[.\n]*Compression (?P<comp>\d+\.\d+[E\-\d]*)[.\n]*TC (?P<tc>\d+\.\d+[E\-\d]*)'
     file_regex_2 = 'MaxLenNoGap= (?P<maxlen>\d+).*NumSeq= (?P<numseq>\d+).*LenRef= (?P<lenref>\d+).*LenEst= (?P<lenest>\d+).*Cells= (?P<cells>\d+)'
     fileregs = re.compile(file_regex)
     fileregs2 = re.compile(file_regex_2)
@@ -107,7 +107,15 @@ def fastsp_results_folder_to_tab_delimited(folder=None, output_file_path=None):
 
     outfile.close()
 
+
 def read_from_fasta(file_path):
+    '''
+    Reads a fasta file into a dictionary where the keys are sequence names and values are strings representing the
+    sequence.
+
+    :param file_path:
+    :return:
+    '''
     output={}
     fasta=open(file_path,'r')
     first=True
@@ -126,6 +134,26 @@ def read_from_fasta(file_path):
     return output
 
 def write_to_fasta(out_file_path=None,fasta_dict=None,subset_keys=None,raw=False):
+    '''
+    takes a dictionary where keys are the sequence names and values are the sequences, and writes that to a FASTA file.
+    Optionally can include only a subset of the full set of taxa (defaults to all), and optionally can remove all gaps
+    before writing.
+
+    :param out_file_path:
+    :param fasta_dict:
+    :param subset_keys:
+    :param raw:
+    :return: None
+    '''
+    if out_file_path==None:
+        a = '''
+Arguments (in order):
+    out_file_path:
+    fasta_dict:
+    subset_keys:
+    raw:
+        '''
+        return None
 
     if subset_keys==None:
         mykeys=fasta_dict.keys()
@@ -282,21 +310,21 @@ def get_prefix(os=None):
     return prefix_general
 
 def reduce_file(ref_file, in_file, reduced_file):
-    pref=get_prefix()
+    # pref=get_prefix()
     # file1=pref+'/results/homfam/pasta_results/aln_full/homfam_aat__200.marker001.homfam_aat__raw.aln'
-    file1=pref+in_file
+    file1=in_file
     # file_ref=pref+'/Data/homfam/aat/model/true.reduced.fasta'
-    file_ref=pref+ref_file
+    file_ref=ref_file
     # file_out=pref+'/results/homfam/pasta_results/aln_reduced/homfam_aat__200.marker001.homfam_aat.aln'
-    file_out=pref+reduced_file
+    file_out=reduced_file
     aln=alignment_from_fasta()
     fasta1=aln.read_from_fasta(file1)
     fasta_ref=aln.read_from_fasta(file_ref)
 
     a=set(fasta1.keys()).intersection(fasta_ref.keys())
     aln.write_to_fasta(file_out,fasta1,a)
-    for i in a:
-        print i + ' - ' + str(len(fasta_ref[i])) + ' - ' + str(len(fasta1[i]))
+    # for i in a:
+    #     print i + ' - ' + str(len(fasta_ref[i])) + ' - ' + str(len(fasta1[i]))
     print 'done: ' + in_file
 
 def fastsp_get_empty_args():
