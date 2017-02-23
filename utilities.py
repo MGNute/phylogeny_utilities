@@ -7,6 +7,13 @@ import dendropy
 from Bio import SeqIO
 
 def mask_fastadict(fasta, min_pct_nongap = 0.1):
+    '''
+    Takes a fasta dictionary and returns an equivalent version with the sequences masked
+    based on 'min_pct_nongap'
+    :param fasta:
+    :param min_pct_nongap:
+    :return:
+    '''
     thresh = min_pct_nongap/100
     ntax = len(fasta.keys())
     ncols = len(fasta.values()[0])
@@ -24,6 +31,13 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
     return newfasta
 
 def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
+    '''
+    Does pretty much what it says. Saves the file in format dependent on the path, so best
+    to end the path with '.pdf'
+    :param fasta_file:
+    :param out_figure_path:
+    :return:
+    '''
     a = read_from_fasta(fasta_file)
     lsnp = np.array(map(len,a.values()))
     plt.hist(lsnp,'auto')
@@ -33,8 +47,40 @@ def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
     plt.savefig(out_figure_path)
     plt.clf()
 
+def get_nx2_nparray_diffs(arr1,arr2):
+    '''
+    Honestly I'm not sure what this function does or was used for.
+    :param arr1:
+    :param arr2:
+    :return:
+    '''
+    l1=[]
+    for i in range(arr1.shape[0]):
+        l1.append(str(np.getbuffer(arr1[i,:].ravel())))
+
+    l2 = []
+    for i in range(arr2.shape[0]):
+        l2.append(str(np.getbuffer(arr2[i,:].ravel())))
+
+    if len(l1)>len(l2):
+        l3 = list(set(l1).difference(set(l2)))
+    else:
+        l3 = list(set(l2).difference(set(l1)))
+
+    h = len(l3)
+    res = np.zeros((h,2),arr1.dtype)
+    for i in range(h):
+        res[i,:]=np.frombuffer(l3[i],dtype=arr1.dtype)
+    return res
 
 def make_fasta_with_clean_names(fastadict,outfasta,outnames):
+    '''
+    Creates a fasta file that has names as simple integer strings, starting at 1.
+    :param fastadict:
+    :param outfasta:
+    :param outnames:
+    :return:
+    '''
     outn=open(outnames,'w')
     newfasta={}
     counter=1
@@ -86,6 +132,13 @@ def seq_length_data_for_histogram(a):
     return L
 
 def hist_of_seqs_by_name(seqs,i,fasta_dict):
+    '''
+    Not sure what this is for...
+    :param seqs:
+    :param i:
+    :param fasta_dict:
+    :return:
+    '''
     allkeys=[k for k in fasta_dict.keys() if k[0:10]==seqs[i]]
     hist={}
     for i in allkeys:
@@ -109,6 +162,11 @@ def bp_genbank_to_fasta(gbk_in):
     return count
 
 def bp_genbank_get_CDS_dict(filename):
+    '''
+    Does some kind of parsing of a genbank file...
+    :param filename:
+    :return:
+    '''
     print filename
     seq = enumerate(SeqIO.parse(filename,"genbank"))
     ind, rec = seq.next()
