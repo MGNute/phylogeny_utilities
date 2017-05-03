@@ -30,6 +30,14 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
         newfasta[k] = str(np.getbuffer(nparr[i,maskcols]))
     return newfasta
 
+def get_min_max_avg_sequence_length(fasta_file):
+    a = read_from_fasta(fasta_file)
+    mylens = map(len,a.values())
+    m1 = max(mylens)
+    m2 = min(mylens)
+    mavg = float(sum(mylens))/float(len(mylens))
+    print '%s --- min: %s, max: %s, avg: %.2f' % (fasta_file,m2, m1, mavg)
+
 def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
     '''
     Does pretty much what it says. Saves the file in format dependent on the path, so best
@@ -167,7 +175,7 @@ def bp_genbank_get_CDS_dict(filename):
     :param filename:
     :return:
     '''
-    print filename
+    # print filename
     seq = enumerate(SeqIO.parse(filename,"genbank"))
     ind, rec = seq.next()
     p,f = os.path.split(filename)
@@ -369,7 +377,7 @@ def dna_to_protein(dna):
     for i in range(k):
         codon = dna[(i*3):(i*3+3)].upper()
         str_protein = str_protein + codon_lookup[codon]
-    str_protein = str_protein.replace('')
+    str_protein = str_protein.replace('(stop)','')
     return str_protein
 
 def aligned_protein_to_nucleotides(prot,raw_dna):
@@ -464,6 +472,18 @@ def write_list_to_file(mylist,filepath):
     for i in mylist:
         myf.write(i + '\n')
 
+    myf.close()
+
+def write_dict_to_file(mydict, filepath, delimiter=None):
+    if delimiter is None:
+        delimiter = '\t'
+    myf = open(filepath,'w')
+
+    for k in mydict.keys():
+        myf.write(k)
+        myf.write(delimiter)
+        myf.write(str(mydict[k]))
+        myf.write("\n")
     myf.close()
 
 def get_two_trees(a,b):

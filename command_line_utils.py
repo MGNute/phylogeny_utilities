@@ -41,7 +41,7 @@ def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_pref
     nmap.close()
     write_to_fasta(new_fasta_path,newf)
 
-def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False):
+def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
     """
     Takes a fasta dictionary (keys=taxon names, values=alignment strings) and writes it to a file. Contains
     optional variables to specify only a subset of keys to write, or to write strings without blanks (assumed
@@ -58,7 +58,8 @@ def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False):
     else:
         mykeys=list(set(subset_keys).intersection(fasta_dict.keys()))
         leftover_keys=list(set(subset_keys).difference(fasta_dict.keys()))
-        print 'There were ' + str(len(leftover_keys)) + ' keys in the subset that were not in the original data.\n'
+        if not quiet:
+            print 'There were ' + str(len(leftover_keys)) + ' keys in the subset that were not in the original data.\n'
 
 
     fasta=open(out_file_path,'w')
@@ -69,7 +70,8 @@ def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False):
         else:
             fasta.write(fasta_dict[i].replace('-','')+'\n')
     fasta.close()
-    print 'wrote file: ' + out_file_path + ' with the specified keys.'
+    if not quiet:
+        print 'wrote file: ' + out_file_path + ' with the specified keys.'
 
 
 def remove_all_blank_columns(fasta_dict,same_length_check=True):
@@ -222,6 +224,50 @@ def split_fastq_into_fasta_and_quality(in_path, out_fasta_p, out_quality_p):
     print "Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
           (in_fastq, out_fasta_p, out_quality_p)
 
+def dedupe_and_rename(in_aln, name_map, out_aln):
+    ia = read_from_fasta(in_aln)
+    print "de-duping %s" % in_aln
+    nm = {}
+    # back_lkp = {}
+    # fwd_lkp = {}
+    a_len = len(ia.values())
+    ia_seq_uq = list(set(ia.values()))
+    a_len_uq = len(ia_seq_uq)
+    print '\toriginal file has %s sequences and %s uniques' % (a_len, a_len_uq)
+    back_lkp_it = []
+    fwd_lkp_it = []
+
+    print '\tmaking iterables'
+    ct = 0
+    done = 0
+    for v in ia_seq_uq:
+        newname = 's' + str(ct)
+        back_lkp_it.append((v,newname))
+        fwd_lkp_it.append((newname,v))
+        ct += 1
+
+    print '\tmaking dictionaries'
+    fwd_lkp = dict(fwd_lkp_it)
+    bck_lkp = dict(back_lkp_it)
+
+    # a = len(ia.keys())
+    # b = len(fwd_lkp.keys())
+    # c = a-b
+    # print "\tthe original had %s sequences, new has %s sequences. %s dupes" % (a,b,c)
+    print '\twriting to fasta'
+    write_to_fasta(out_aln,fwd_lkp)
+
+    print '\tmaking name_map'
+    myf = open(name_map,'w')
+    mapct = 0
+    for k in ia.keys():
+        myf.write(k + '\t')
+        myf.write(bck_lkp[ia[k]] + '\n')
+        mapct +=1
+    myf.close()
+    print '\twrote %s values to the name map file %s' % (mapct, name_map)
+
+
 
 def remove_blanks_from_file(fasta,out_path):
     fas=read_from_fasta(fasta)
@@ -266,6 +312,9 @@ Options:
         --->Takes a Fastq file and parses it, writing it to two different files for the sequences and their quality
             scores. Each is (effectively) a fasta-formatted file. Also does some string cleanup on the sequence names t0
             use only dashes and underscores.
+    --DedupeAndRename -ia [in_alignment] -nm [name_map] -oa [out_alignment]
+        --->Takes a fasta file and removes all duplicate sequences from the file. Additionally renames the sequences
+            with a sequenectial "s###" scheme and prints a name map to the file [name-map]
         '''
         sys.exit(0)
     if sys.argv[1]=='--shrink-to-fit':
@@ -355,5 +404,10 @@ Options:
         out_fasta = sys.argv[sys.argv.index('-of') + 1]
         out_quality = sys.argv[sys.argv.index('-oq') + 1]
         split_fastq_into_fasta_and_quality(in_fastq, out_fasta, out_quality)
+    elif sys.argv[1] == '--DedupeAndRename':
+        inaln = sys.argv[sys.argv.index('-ia') + 1]
+        outaln = sys.argv[sys.argv.index('-oa') + 1]
+        name_map = sys.argv[sys.argv.index('-nm') + 1]
+        dedupe_and_rename(inaln, name_map, outaln)
     else:
         print "No major option recognized. Check your \'--\' option and try again."

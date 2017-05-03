@@ -107,6 +107,22 @@ def fastsp_results_folder_to_tab_delimited(folder=None, output_file_path=None):
 
     outfile.close()
 
+def mask_fastadict(fasta, min_pct_nongap = 0.1):
+    thresh = min_pct_nongap/100
+    ntax = len(fasta.keys())
+    ncols = len(fasta.values()[0])
+    nparr = np.zeros((ntax,ncols),dtype=np.uint8)
+    for i in range(ntax):
+        seq = fasta[fasta.keys()[i]]
+        nparr[i,:]=np.frombuffer(seq,np.uint8)
+
+    # 45 is the uint8 code for the dash character '-':
+    maskcols = np.where(np.sum((nparr<>45)*1,0).astype(np.float32)/nparr.shape[0]>thresh)
+    newfasta = {}
+    for i in range(ntax):
+        k = fasta.keys()[i]
+        newfasta[k] = str(np.getbuffer(nparr[i,maskcols]))
+    return newfasta
 
 def read_from_fasta(file_path):
     '''
