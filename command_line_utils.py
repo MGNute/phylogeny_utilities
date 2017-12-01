@@ -315,6 +315,9 @@ Options:
     --DedupeAndRename -ia [in_alignment] -nm [name_map] -oa [out_alignment]
         --->Takes a fasta file and removes all duplicate sequences from the file. Additionally renames the sequences
             with a sequenectial "s###" scheme and prints a name map to the file [name-map]
+    --MakeLengthHistogram -in [in_fasta] -out [output_image_path]
+        --->Makes a histogram of the sequence lengths for the sequences in the input fasta file. Saves the file
+            in a format that is dependent on the path, so best to end it with '.pdf'
         '''
         sys.exit(0)
     if sys.argv[1]=='--shrink-to-fit':
@@ -409,5 +412,9 @@ Options:
         outaln = sys.argv[sys.argv.index('-oa') + 1]
         name_map = sys.argv[sys.argv.index('-nm') + 1]
         dedupe_and_rename(inaln, name_map, outaln)
+    elif sys.argv[1] == '--MakeLengthHistogram':
+        inaln = sys.argv[sys.argv.index('-in') + 1]
+        outpath = sys.argv[sys.argv.index('-out') + 1]
+        make_histogram_of_sequence_lengths(inaln, outpath)
     else:
         print "No major option recognized. Check your \'--\' option and try again."

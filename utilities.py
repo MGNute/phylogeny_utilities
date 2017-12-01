@@ -6,6 +6,51 @@ import matplotlib.pyplot as plt
 import dendropy
 from Bio import SeqIO
 
+def read_from_aligned_phylip(file_path,as_nparray=False):
+    f=open(file_path,'r')
+    sz_ln = f.readline().strip().split(' ')
+
+    #get size:
+    rowsdone=False
+    nrows = 0; ncols = 0;
+    for i in range(len(sz_ln)):
+        if sz_ln[i]<>'' and rowsdone==False:
+            nrows=int(sz_ln[i])
+            rowsdone=True
+        elif sz_ln[i]<>'' and rowsdone==True:
+            ncols = int(sz_ln[i])
+            break
+
+    assert ncols>0 and nrows>0
+    arr = np.zeros((nrows,ncols),dtype=np.uint8)
+    names = []
+
+    #figure out sequence start positions
+    ln = f.readline().strip()
+    lctr = 0
+    while ln[lctr]<>' ':
+        lctr += 1
+    while ln[lctr]==' ':
+        lctr+=1
+    names.append(ln[:lctr].strip())
+    arr[0,:]=np.frombuffer(ln[lctr:(lctr+ncols)],np.uint8)
+
+    for i in range(1,nrows):
+        ln = f.readline().strip()
+        names.append(ln[:lctr].strip())
+        arr[i,:]=np.frombuffer(ln[lctr:(lctr+ncols)],np.uint8)
+
+    if as_nparray==False:
+        fasta={}
+        for i in range(nrows):
+            fasta[names[i]]=str(np.getbuffer(arr[i,:]))
+        return fasta
+    else:
+        return names, arr
+
+
+
+
 def mask_fastadict(fasta, min_pct_nongap = 0.1):
     '''
     Takes a fasta dictionary and returns an equivalent version with the sequences masked
@@ -29,6 +74,30 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
         k = fasta.keys()[i]
         newfasta[k] = str(np.getbuffer(nparr[i,maskcols]))
     return newfasta
+
+def fasta_dict_to_nparray(fasta):
+    ntax = len(fasta.keys())
+    ncols = max(map(len,fasta.values()))
+    nparr = np.zeros((ntax,ncols),dtype=np.uint8)
+    taxnames=[]
+    for i in range(ntax):
+        taxnames.append(fasta.keys()[i])
+        seq = fasta[fasta.keys()[i]]
+        ls = len(seq)
+        nparr[i,:ls]=np.frombuffer(seq,np.uint8)
+        if ls < ncols:
+            nparr[i,ls:]=45
+
+    return taxnames, nparr
+
+def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
+    f = open(out_file_path,'w')
+    for i in range(len(taxnames)):
+        f.write('>%s\n' % taxnames[i])
+        f.write('%s\n' % str(np.getbuffer(fasta_nparr[i,:])))
+    print 'wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path)
+    f.close()
+
 
 def get_min_max_avg_sequence_length(fasta_file):
     a = read_from_fasta(fasta_file)
