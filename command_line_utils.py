@@ -1,4 +1,4 @@
-import sys
+import sys, collections
 import utilities
 
 def read_from_fasta(file_path):
@@ -224,8 +224,10 @@ def split_fastq_into_fasta_and_quality(in_path, out_fasta_p, out_quality_p):
     print "Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
           (in_fastq, out_fasta_p, out_quality_p)
 
-def dedupe_and_rename(in_aln, name_map, out_aln):
+def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
     ia = read_from_fasta(in_aln)
+    if out_mult is not None:
+        mults = dict(collections.Counter(ia.values()))
     print "de-duping %s" % in_aln
     nm = {}
     # back_lkp = {}
@@ -250,6 +252,14 @@ def dedupe_and_rename(in_aln, name_map, out_aln):
     fwd_lkp = dict(fwd_lkp_it)
     bck_lkp = dict(back_lkp_it)
 
+
+    if out_mult is not None:
+        out_mult_dict = dict.fromkeys(fwd_lkp.keys())
+        for k in out_mult_dict.keys():
+            out_mult_dict[k]=mults[fwd_lkp[k]]
+        write_dict_to_file(out_mult_dict,out_mult_file)
+
+
     # a = len(ia.keys())
     # b = len(fwd_lkp.keys())
     # c = a-b
@@ -267,7 +277,10 @@ def dedupe_and_rename(in_aln, name_map, out_aln):
     myf.close()
     print '\twrote %s values to the name map file %s' % (mapct, name_map)
 
-
+def make_rc_file(fasta,out_path):
+    fas = read_from_fasta(fasta)
+    fasrc = utilities.get_fastadict_reverse_complement(fas)
+    write_to_fasta(out_path,fasrc)
 
 def remove_blanks_from_file(fasta,out_path):
     fas=read_from_fasta(fasta)
@@ -312,12 +325,17 @@ Options:
         --->Takes a Fastq file and parses it, writing it to two different files for the sequences and their quality
             scores. Each is (effectively) a fasta-formatted file. Also does some string cleanup on the sequence names t0
             use only dashes and underscores.
-    --DedupeAndRename -ia [in_alignment] -nm [name_map] -oa [out_alignment]
+    --DedupeAndRename -ia [in_alignment] -nm [name_map] -oa [out_alignment] OPTIONAL: -mult [multiplicity_file]
         --->Takes a fasta file and removes all duplicate sequences from the file. Additionally renames the sequences
-            with a sequenectial "s###" scheme and prints a name map to the file [name-map]
+            with a sequenectial "s###" scheme and prints a name map to the file [name-map]. Optionally, if [multi-
+            plicity_file] is given, a reference is written as a tab-delimited file with the new squence name and a
+            count of occurrences in the input alignment.
     --MakeLengthHistogram -in [in_fasta] -out [output_image_path]
         --->Makes a histogram of the sequence lengths for the sequences in the input fasta file. Saves the file
             in a format that is dependent on the path, so best to end it with '.pdf'
+    --MakeReverseComplement -in [in_fasta] -out [output_fasta]
+        --->Makes a version of the same fasta with all the same sequence names, but with every string as its reverse
+            complement.
         '''
         sys.exit(0)
     if sys.argv[1]=='--shrink-to-fit':
@@ -411,10 +429,19 @@ Options:
         inaln = sys.argv[sys.argv.index('-ia') + 1]
         outaln = sys.argv[sys.argv.index('-oa') + 1]
         name_map = sys.argv[sys.argv.index('-nm') + 1]
-        dedupe_and_rename(inaln, name_map, outaln)
+        if '-mult' not in sys.argv:
+            dedupe_and_rename(inaln, name_map, outaln)
+        else:
+            multfile = sys.argv[sys.argv.index('-mult') + 1]
+            dedupe_and_rename(inaln, name_map, outaln,multfile)
     elif sys.argv[1] == '--MakeLengthHistogram':
         inaln = sys.argv[sys.argv.index('-in') + 1]
         outpath = sys.argv[sys.argv.index('-out') + 1]
         make_histogram_of_sequence_lengths(inaln, outpath)
+    elif sys.argv[1] == '--MakeReverseComplement':
+        inaln = sys.argv[sys.argv.index('-in') + 1]
+        outpath = sys.argv[sys.argv.index('-out') + 1]
+        make_rc_file(inaln,outpath)
+
     else:
         print "No major option recognized. Check your \'--\' option and try again."

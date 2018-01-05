@@ -48,7 +48,18 @@ def read_from_aligned_phylip(file_path,as_nparray=False):
     else:
         return names, arr
 
-
+def get_fastadict_reverse_complement(fd):
+    '''
+    returns a fasta dictionary where every sequence is the reverse complement of the original.
+    :param fd:
+    :return:
+    '''
+    from Bio.Seq import Seq
+    from Bio.Alphabet import generic_dna
+    fdrc = {}
+    for i in fd.keys():
+        fdrc[i] = str(Seq(fd[i],generic_dna).reverse_complement())
+    return fdrc
 
 
 def mask_fastadict(fasta, min_pct_nongap = 0.1):
@@ -543,9 +554,9 @@ def write_list_to_file(mylist,filepath):
 
     myf.close()
 
-def write_dict_to_file(mydict, filepath, delimiter=None):
-    if delimiter is None:
-        delimiter = '\t'
+def write_dict_to_file(mydict, filepath, delimiter='\t'):
+    # if delimiter is None:
+    #     delimiter = '\t'
     myf = open(filepath,'w')
 
     for k in mydict.keys():
