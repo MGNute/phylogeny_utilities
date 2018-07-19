@@ -8,12 +8,13 @@
 # Copyright:   (c) Michael 2015
 # Licence:     <your licence>
 #-------------------------------------------------------------------------------
-import platform, os, StringIO
+import platform, os, io
 import re
 import dendropy
 import numpy as np
 # import pasta_output_readers as pouts
 # import utilities
+
 
 
 def fastsp_run_on_two_fastas(ref_file,est_file,out=None):
@@ -28,7 +29,7 @@ def fastsp_run_on_two_fastas(ref_file,est_file,out=None):
     out.close()
     out = open('temp.txt','r')
     text=out.read()
-    print text
+    print (text)
     out.close()
 
     # text=out.getvalue()
@@ -43,7 +44,7 @@ def fastsp_run_on_two_fastas(ref_file,est_file,out=None):
 def fastsp_read_results_file(filepath=None,optional_filename=None):
     pa, fi = os.path.split(filepath)
     myargs = {}
-    if optional_filename<>None:
+    if optional_filename!=None:
         fi=optional_filename
     # myargs['file_name'] = fi
 
@@ -117,7 +118,7 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
         nparr[i,:]=np.frombuffer(seq,np.uint8)
 
     # 45 is the uint8 code for the dash character '-':
-    maskcols = np.where(np.sum((nparr<>45)*1,0).astype(np.float32)/nparr.shape[0]>thresh)
+    maskcols = np.where(np.sum((nparr!=45)*1,0).astype(np.float32)/nparr.shape[0]>thresh)
     newfasta = {}
     for i in range(ntax):
         k = fasta.keys()[i]
@@ -137,7 +138,7 @@ def read_from_fasta(file_path):
     first=True
     for l in fasta:
         if l[0]=='>':
-            if first<>True:
+            if first!=True:
                 output[name]=seq
             else:
                 first=False
@@ -208,7 +209,7 @@ class alignment_from_fasta:
         first=True
         for l in fasta:
             if l[0]=='>':
-                if first<>True:
+                if first!=True:
                     output[name]=seq
                 else:
                     first=False
@@ -242,24 +243,23 @@ class alignment_from_fasta:
     def count_all_blank_columns(self):
         num_seqs=len(self.sequence.values())
         seq_len=len(self.sequence.values()[0])
-        print num_seqs
-        print seq_len
-        import StringIO
+        print (num_seqs)
+        print (seq_len)
 
-        record=StringIO.StringIO()
+        record=io.StringIO.StringIO()
         record.write('line\tblank\toccupied\n')
 
         for i in self.sequence.keys():
-            if len(self.sequence[i])<>seq_len:
-                print i + ' has sequence length different from the first'
-                print len(self.sequence[i])
+            if len(self.sequence[i])!=seq_len:
+                print (i + ' has sequence length different from the first')
+                print (len(self.sequence[i]))
 
         for i in range(seq_len):
             all_blank=True
             blank_count=0
             occ_count=0
             for j in self.sequence.keys():
-                if self.sequence[j][i]<>'-':
+                if self.sequence[j][i]!='-':
                     occ_count+=1
                 else:
                     blank_count +=1
@@ -279,7 +279,7 @@ class alignment_from_fasta:
         for i in range(seq_len):
             allblank=True
             for j in self.sequence.values():
-                if j[i]<>'-':
+                if j[i]!='-':
                     allblank=False
                     break
             if allblank==True:
@@ -341,7 +341,7 @@ def reduce_file(ref_file, in_file, reduced_file):
     aln.write_to_fasta(file_out,fasta1,a)
     # for i in a:
     #     print i + ' - ' + str(len(fasta_ref[i])) + ' - ' + str(len(fasta1[i]))
-    print 'done: ' + in_file
+    print ('done: ' + in_file)
 
 def fastsp_get_empty_args():
     a= {
@@ -365,7 +365,7 @@ if __name__ == '__main__':
     myf=get_prefix()+'/code/sepp/test/unittest/data/upp/initial.fas'
     aln=alignment_from_fasta()
     aln.assign_fasta(myf)
-    print aln.get_sequence_count()
+    print (aln.get_sequence_count())
     # print aln.sequence.keys()
 
 

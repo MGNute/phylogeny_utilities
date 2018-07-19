@@ -1,33 +1,11 @@
 import sys, collections
-import utilities
+from utilities import *
 
-def read_from_fasta(file_path):
-    """
-    Reads from a fasta file and returns a dictionary where keys are taxon names and values are strings
-    representing the sequence.
-    :param file_path (string): The full system-readable path to the fasta file
-    :return: fasta (dict)
-    """
-    output={}
-    fasta=open(file_path,'r')
-    first=True
-    for l in fasta:
-        if l[0]=='>':
-            if first<>True:
-                output[name]=seq
-            else:
-                first=False
-            name=l[1:].strip()
-            seq=''
-        else:
-            seq=seq + l.strip()
-    output[name]=seq
-    fasta.close()
-    return output
+
 
 def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_prefix = ''):
     a = read_from_fasta(fasta_path)
-    if name_prefix <> '':
+    if name_prefix != '':
         name_prefix = name_prefix + '_'
     nmap= open(name_map_path,'w')
     newf={}
@@ -40,39 +18,6 @@ def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_pref
 
     nmap.close()
     write_to_fasta(new_fasta_path,newf)
-
-def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
-    """
-    Takes a fasta dictionary (keys=taxon names, values=alignment strings) and writes it to a file. Contains
-    optional variables to specify only a subset of keys to write, or to write strings without blanks (assumed
-    to be '-').
-    :param out_file_path (string): system-readable path to write to
-    :param fasta_dict (dict): fasta dictionary
-    :param subset_keys: OPTIONAL iterator with values representing taxon names to include.
-    :param raw: OPTIONAL (default: False) if TRUE, writes the "raw" (unaligned) sequence, which is the
-    full sequence with blank ('-') characters removed.
-    :return:
-    """
-    if subset_keys==None:
-        mykeys=fasta_dict.keys()
-    else:
-        mykeys=list(set(subset_keys).intersection(fasta_dict.keys()))
-        leftover_keys=list(set(subset_keys).difference(fasta_dict.keys()))
-        if not quiet:
-            print 'There were ' + str(len(leftover_keys)) + ' keys in the subset that were not in the original data.\n'
-
-
-    fasta=open(out_file_path,'w')
-    for i in mykeys:
-        fasta.write('>'+i+'\n')
-        if raw==False:
-            fasta.write(fasta_dict[i]+'\n')
-        else:
-            fasta.write(fasta_dict[i].replace('-','')+'\n')
-    fasta.close()
-    if not quiet:
-        print 'wrote file: ' + out_file_path + ' with the specified keys.'
-
 
 def remove_all_blank_columns(fasta_dict,same_length_check=True):
     """
@@ -88,14 +33,15 @@ def remove_all_blank_columns(fasta_dict,same_length_check=True):
         in fasta_dict are not the same length.
     :return: fasta_dict: dictionary with columns removed.
     """
-    num_seqs=len(fasta_dict.values())
-    seq_len = len(fasta_dict.values()[0])
+    seqs_list = list(fasta_dict.values())
+    num_seqs=len(seqs_list)
+    seq_len = len(seqs_list[0])
 
     # check that all the sequences are the same length
     if same_length_check==True:
         for i in fasta_dict.values():
-            if len(i) <> seq_len:
-                print 'The sequences were not all the same length.'
+            if len(i) != seq_len:
+                print ('The sequences were not all the same length.')
                 return fasta_dict, -1
 
     # identify columns that are blank for every taxon
@@ -103,7 +49,7 @@ def remove_all_blank_columns(fasta_dict,same_length_check=True):
     for i in range(seq_len):
         allblank=True
         for j in fasta_dict.values():
-            if j[i]<>'-':
+            if j[i]!='-':
                 allblank=False
                 break
         if allblank==True:
@@ -125,8 +71,12 @@ def remove_all_blank_columns(fasta_dict,same_length_check=True):
             for j in non_blanks:
                 new = new + old[j]
             newfasta[i]=new
+    else:
+        for i in fasta_dict.keys():
+            newfasta[i]=fasta_dict[i]
 
-    return newfasta, all_blanks_list
+    # return newfasta, all_blanks_list
+    return newfasta
 
 def rename_fasta_by_name_map(inalign,outalign,namemap,keysfirst = True):
     nm = utilities.get_dict_from_tab_delimited_file(namemap,keysfirst)
@@ -143,7 +93,7 @@ def rename_tree_by_name_map(intree, outtree, namemap,keysfirst=True):
     nm = utilities.get_dict_from_tab_delimited_file(namemap, keysfirst)
     for i in tr.leaf_nodes():
         a=i.taxon.label
-        i.taxon.label=unicode(nm[a])
+        i.taxon.label=str(nm[a])
     tr.write(path=outtree, schema="newick")
     pass
 
@@ -188,7 +138,7 @@ def split_fasta_into_parts(in_path, num_parts, out_folder = None):
         fanew = dict(fa.items()[c1:c2])
         new_path = path_template % i
         write_to_fasta(new_path,fanew)
-        print 'wrote file: %s' % new_path
+        print ('wrote file: %s' % new_path)
         del fanew
 
 def split_fastq_into_fasta_and_quality(in_path, out_fasta_p, out_quality_p):
@@ -221,25 +171,25 @@ def split_fastq_into_fasta_and_quality(in_path, out_fasta_p, out_quality_p):
     myf.close()
     out_fasta.close()
     out_quality.close()
-    print "Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
-          (in_fastq, out_fasta_p, out_quality_p)
+    print ("Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
+          (in_fastq, out_fasta_p, out_quality_p))
 
 def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
     ia = read_from_fasta(in_aln)
-    if out_mult is not None:
+    if out_mult_file is not None:
         mults = dict(collections.Counter(ia.values()))
-    print "de-duping %s" % in_aln
+    print ("de-duping %s" % in_aln)
     nm = {}
     # back_lkp = {}
     # fwd_lkp = {}
     a_len = len(ia.values())
     ia_seq_uq = list(set(ia.values()))
     a_len_uq = len(ia_seq_uq)
-    print '\toriginal file has %s sequences and %s uniques' % (a_len, a_len_uq)
+    print ('\toriginal file has %s sequences and %s uniques' % (a_len, a_len_uq))
     back_lkp_it = []
     fwd_lkp_it = []
 
-    print '\tmaking iterables'
+    print ('\tmaking iterables')
     ct = 0
     done = 0
     for v in ia_seq_uq:
@@ -248,12 +198,12 @@ def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
         fwd_lkp_it.append((newname,v))
         ct += 1
 
-    print '\tmaking dictionaries'
+    print ('\tmaking dictionaries')
     fwd_lkp = dict(fwd_lkp_it)
     bck_lkp = dict(back_lkp_it)
 
 
-    if out_mult is not None:
+    if out_mult_file is not None:
         out_mult_dict = dict.fromkeys(fwd_lkp.keys())
         for k in out_mult_dict.keys():
             out_mult_dict[k]=mults[fwd_lkp[k]]
@@ -264,10 +214,10 @@ def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
     # b = len(fwd_lkp.keys())
     # c = a-b
     # print "\tthe original had %s sequences, new has %s sequences. %s dupes" % (a,b,c)
-    print '\twriting to fasta'
+    print ('\twriting to fasta')
     write_to_fasta(out_aln,fwd_lkp)
 
-    print '\tmaking name_map'
+    print ('\tmaking name_map')
     myf = open(name_map,'w')
     mapct = 0
     for k in ia.keys():
@@ -275,7 +225,7 @@ def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
         myf.write(bck_lkp[ia[k]] + '\n')
         mapct +=1
     myf.close()
-    print '\twrote %s values to the name map file %s' % (mapct, name_map)
+    print ('\twrote %s values to the name map file %s' % (mapct, name_map))
 
 def make_rc_file(fasta,out_path):
     fas = read_from_fasta(fasta)
@@ -289,7 +239,7 @@ def remove_blanks_from_file(fasta,out_path):
 
 if __name__=='__main__':
     if '-h' in sys.argv or '--help' in sys.argv:
-        print '''
+        print ('''
 usage: python command_line_utils.py [...options...]
 
 Options:
@@ -336,23 +286,26 @@ Options:
     --MakeReverseComplement -in [in_fasta] -out [output_fasta]
         --->Makes a version of the same fasta with all the same sequence names, but with every string as its reverse
             complement.
-        '''
+    --PDist [in_fasta] OPTIONAL: -max
+        --->Computes average p-distance for the fasta and prints it to stdout. If '-max' option is given, computes max
+            p-distance rather than avg. (Note: File name must be second argument
+        ''')
         sys.exit(0)
     if sys.argv[1]=='--shrink-to-fit':
         big_fasta = sys.argv[sys.argv.index('-b')+1]
         small_fasta = sys.argv[sys.argv.index('-s')+1]
         out_path = sys.argv[sys.argv.index('-o')+1]
-        print big_fasta
-        print small_fasta
-        print out_path
+        print (big_fasta)
+        print (small_fasta)
+        print (out_path)
         shrink_one_fasta_to_match_another(big_fasta,small_fasta,out_path)
     elif sys.argv[1]=='--shrink-alignment-to-fit-list':
         big_fasta = sys.argv[sys.argv.index('-b')+1]
         small_fasta = sys.argv[sys.argv.index('-s')+1]
         out_path = sys.argv[sys.argv.index('-o')+1]
-        print big_fasta
-        print small_fasta
-        print out_path
+        print (big_fasta)
+        print (small_fasta)
+        print (out_path)
         shrink_one_fasta_to_match_another(big_fasta,small_fasta,out_path,True)
     elif sys.argv[1]=='--extract-complement':
         big_fasta = sys.argv[sys.argv.index('-b')+1]
@@ -364,21 +317,21 @@ Options:
         fasta = sys.argv[sys.argv.index('-f')+1]
         if '-o' in sys.argv:
             out_path = sys.argv[sys.argv.index('-o')+1]
-            print "out_path: %s" % out_path
+            print ("out_path: %s" % out_path)
         else:
             out_path = fasta
         remove_blanks_from_file(fasta,out_path)
     elif sys.argv[1]=='--FastSPfold':
         fold=sys.argv[sys.argv.index('-f')+1]
         outfile=sys.argv[sys.argv.index('-o')+1]
-        print "converting FastSP folder %s to tab-delimited file %s" % (fold,outfile)
+        print ("converting FastSP folder %s to tab-delimited file %s" % (fold,outfile))
         # from phylogeny_utilities.alignment_utils import *
         from alignment_utils import *
         fastsp_results_folder_to_tab_delimited(fold,outfile)
     elif sys.argv[1]=='--AlignmentStatsFold':
         fold=sys.argv[sys.argv.index('-f')+1]
         outfile=sys.argv[sys.argv.index('-o')+1]
-        print "converting Alignment Stats folder %s to tab-delimited file %s" % (fold,outfile)
+        print ("converting Alignment Stats folder %s to tab-delimited file %s" % (fold,outfile))
         # from phylogeny_utilities.utilities import *
         from utilities import *
         alignment_stats_dir_to_tabd(fold,outfile)
@@ -390,7 +343,7 @@ Options:
             prefix = sys.argv[sys.argv.index('-p')+1]
         else:
             prefix = ''
-        print "converting fasta %s to %s with sanitized names" % (infile,outfile)
+        print ("converting fasta %s to %s with sanitized names" % (infile,outfile))
         rename_fasta_to_numbers(infile,name_map,outfile,prefix)
     elif sys.argv[1]=='--RenameAlignment':
         # intree=sys.argv[sys.argv.index('-it')+1]
@@ -442,6 +395,10 @@ Options:
         inaln = sys.argv[sys.argv.index('-in') + 1]
         outpath = sys.argv[sys.argv.index('-out') + 1]
         make_rc_file(inaln,outpath)
-
+    elif sys.argv[1] == '--PDist':
+        # inaln = sys.argv[sys.argv.index('-in') + 1]
+        inaln = sys.argv[2]
+        pd = get_avg_pdistance_of_fasta(inaln,'-max' in sys.argv)
+        print(pd)
     else:
-        print "No major option recognized. Check your \'--\' option and try again."
+        print ("No major option recognized. Check your \'--\' option and try again.")

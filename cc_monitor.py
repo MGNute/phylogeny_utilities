@@ -2,7 +2,7 @@ import sys, re, os, colorsys, random, platform
 from utilities import get_list_from_file, write_list_to_file
 if platform.system()=='Windows':
     import cairo
-    workdir = 'C:\\Users\\miken\\Dropbox\\Grad School\\Phylogenetics\\work\\test-queue\\'
+    workdir = 'C:\\Users\\miken\\Dropbox\\GradSchool\\Phylogenetics\\work\\test-queue\\'
     file_list = os.path.join(workdir,'text_files_completed.txt')
 else:
     workdir = '/projects/tallis/nute/qdumps'
@@ -49,7 +49,7 @@ def process_file(filename=None):
 
     for line in myf:
         if len(line.strip())==0:
-            if mainkey<>'' and len(myargs)>0:
+            if mainkey != '' and len(myargs)>0:
                 if doing_jobs==True:
                     jobs[mainkey]=myargs
                     # jct += 1
@@ -63,7 +63,7 @@ def process_file(filename=None):
                 myargs = {}
 
         elif line[0] == '\t':
-            if lastkey<>'':
+            if lastkey!='':
                 myargs[lastkey] += line[1:].strip()
         elif line[0:4] == '    ':
             a = line[4:].split(' = ')
@@ -71,7 +71,7 @@ def process_file(filename=None):
             lastkey = a[0]
         else:
             temp_key = line.strip()
-            if temp_key[0:3]<>'Job':
+            if temp_key[0:3]!='Job':
                 if temp_key[0:3] in ['tau','gol']:
                     doing_jobs = False
                     # print temp_key
@@ -80,7 +80,7 @@ def process_file(filename=None):
                 try:
                     mainkey = idre.match(temp_key).group('id')
                 except:
-                    print line
+                    print (line)
                 #     print 'error...'
                 #     return None
             else:
@@ -110,7 +110,7 @@ def color_scale_set(total):
         coords.append(c)
 
     locus = []
-    backrange = range(side)
+    backrange = list(range(side))
     backrange.sort(reverse=True)
     for i in backrange:
         for j in backrange:
@@ -137,7 +137,7 @@ def get_ideal_permutation(els):
     B = random.sample(Bi, len(Bi))
     out = []
     out.append(m1 - 1)
-    if len(B) <> len(A):
+    if len(B) != len(A):
         out.append(B.pop() - 1)
     for i in range(len(A)):
         out.append(A.pop() - 1)
@@ -174,7 +174,7 @@ def make_graphic(nodes,jobs,date_str, fi_date_str,graphicpath=None):
         if 'jobs' in nodes[i].keys():
             joblist = jre.findall(nodes[i]['jobs'])
             if len(joblist)>1:
-                print i + ' has %s jobs' % len(joblist)
+                print (i + ' has %s jobs' % len(joblist))
             if 'euser' in jobs[joblist[0]].keys():
                 nodes[i]['occupant'] = jobs[joblist[0]]['euser']
                 userlist.append(nodes[i]['occupant'])
@@ -352,7 +352,7 @@ def make_graphic(nodes,jobs,date_str, fi_date_str,graphicpath=None):
 if __name__=='__main__':
     files_to_do, already_done = get_folder_inventory()
     for i in files_to_do:
-        print 'running %s' % i
+        print ('running %s' % i)
         n, j, dstr, f_dtstr = process_file(i)
         make_graphic(n,j, dstr, f_dtstr)
         already_done.append(i)

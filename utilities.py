@@ -1,10 +1,66 @@
-from startup import *
-from command_line_utils import *
+# from phylogeny_utilities.command_line_utils import *
 import re, platform, time, os
 import numpy as np
 import matplotlib.pyplot as plt
 import dendropy
 from Bio import SeqIO
+
+def read_from_fasta(file_path):
+    """
+    Reads from a fasta file and returns a dictionary where keys are taxon names and values are strings
+    representing the sequence.
+    :param file_path (string): The full system-readable path to the fasta file
+    :return: fasta (dict)
+    """
+    output={}
+    fasta=open(file_path,'r')
+    first=True
+    for l in fasta:
+        if l[0]=='>':
+            if first!=True:
+                output[name]=seq
+            else:
+                first=False
+            name=l[1:].strip()
+            seq=''
+        else:
+            seq=seq + l.strip()
+    output[name]=seq
+    fasta.close()
+    return output
+
+def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
+    """
+    Takes a fasta dictionary (keys=taxon names, values=alignment strings) and writes it to a file. Contains
+    optional variables to specify only a subset of keys to write, or to write strings without blanks (assumed
+    to be '-').
+    :param out_file_path (string): system-readable path to write to
+    :param fasta_dict (dict): fasta dictionary
+    :param subset_keys: OPTIONAL iterator with values representing taxon names to include.
+    :param raw: OPTIONAL (default: False) if TRUE, writes the "raw" (unaligned) sequence, which is the
+    full sequence with blank ('-') characters removed.
+    :return:
+    """
+    if subset_keys==None:
+        mykeys=fasta_dict.keys()
+    else:
+        mykeys=list(set(subset_keys).intersection(fasta_dict.keys()))
+        leftover_keys=list(set(subset_keys).difference(fasta_dict.keys()))
+        if not quiet:
+            print ('There were ' + str(len(leftover_keys)) + ' keys in the subset that were not in the original data.\n')
+
+
+    fasta=open(out_file_path,'w')
+    for i in mykeys:
+        fasta.write('>'+i+'\n')
+        if raw==False:
+            fasta.write(fasta_dict[i]+'\n')
+        else:
+            fasta.write(fasta_dict[i].replace('-','')+'\n')
+    fasta.close()
+    if not quiet:
+        print ('wrote file: ' + out_file_path + ' with the specified keys.')
+
 
 def read_from_aligned_phylip(file_path,as_nparray=False):
     f=open(file_path,'r')
@@ -14,10 +70,10 @@ def read_from_aligned_phylip(file_path,as_nparray=False):
     rowsdone=False
     nrows = 0; ncols = 0;
     for i in range(len(sz_ln)):
-        if sz_ln[i]<>'' and rowsdone==False:
+        if sz_ln[i]!='' and rowsdone==False:
             nrows=int(sz_ln[i])
             rowsdone=True
-        elif sz_ln[i]<>'' and rowsdone==True:
+        elif sz_ln[i]!='' and rowsdone==True:
             ncols = int(sz_ln[i])
             break
 
@@ -28,7 +84,7 @@ def read_from_aligned_phylip(file_path,as_nparray=False):
     #figure out sequence start positions
     ln = f.readline().strip()
     lctr = 0
-    while ln[lctr]<>' ':
+    while ln[lctr]!=' ':
         lctr += 1
     while ln[lctr]==' ':
         lctr+=1
@@ -61,6 +117,11 @@ def get_fastadict_reverse_complement(fd):
         fdrc[i] = str(Seq(fd[i],generic_dna).reverse_complement())
     return fdrc
 
+def reverse_complement(seq):
+    lkp = {'G':'C', 'g':'c', 'C':'G', 'c':'g', 'A':'T', 'a':'t', 'T':'A', 't':'a'}
+    keys = set(list('GCATgcat'))
+    a=''.join(map(lambda x: lkp[x] if x in keys else x, seq))
+    return a[::-1]
 
 def mask_fastadict(fasta, min_pct_nongap = 0.1):
     '''
@@ -79,25 +140,51 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
         nparr[i,:]=np.frombuffer(seq,np.uint8)
 
     # 45 is the uint8 code for the dash character '-':
-    maskcols = np.where(np.sum((nparr<>45)*1,0).astype(np.float32)/nparr.shape[0]>thresh)
+    maskcols = np.where(np.sum((nparr!=45)*1,0).astype(np.float32)/nparr.shape[0]>thresh)
     newfasta = {}
     for i in range(ntax):
         k = fasta.keys()[i]
         newfasta[k] = str(np.getbuffer(nparr[i,maskcols]))
     return newfasta
 
+def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
+    f = read_from_fasta(fasta_path)
+    taxn, fnp = fasta_dict_to_nparray(f)
+    maxpd = 0.
+    run_tot = 0.
+    run_ct = 0
+    for i in range(fnp.shape[0]):
+        for j in range(i):
+            comm = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45),dtype=np.float64)
+            same = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45) & (fnp[i,:]==fnp[j,:]),dtype=np.float64)
+            run_tot+= 1.- same / comm
+            run_ct += 1
+            if (1. - same / comm > maxpd):
+                maxpd = 1. - same / comm
+            # print('i: %s\tj: %s\tcomm: %s\tsame: %s' % (i,j,comm,same))
+    pd = run_tot / float(run_ct)
+    # print ('Avg P-Distance: %s' % pd)
+    if getmax==False:
+        return pd
+    else:
+        return maxpd
+
+
 def fasta_dict_to_nparray(fasta):
     ntax = len(fasta.keys())
     ncols = max(map(len,fasta.values()))
     nparr = np.zeros((ntax,ncols),dtype=np.uint8)
     taxnames=[]
-    for i in range(ntax):
-        taxnames.append(fasta.keys()[i])
-        seq = fasta[fasta.keys()[i]]
+    # for i in range(ntax):
+    i=0
+    for k in fasta.keys():
+        taxnames.append(k)
+        seq = fasta[k]
         ls = len(seq)
-        nparr[i,:ls]=np.frombuffer(seq,np.uint8)
+        nparr[i,:ls]=np.frombuffer(bytes(seq,'utf8'),dtype=np.uint8)
         if ls < ncols:
             nparr[i,ls:]=45
+        i+=1
 
     return taxnames, nparr
 
@@ -106,7 +193,7 @@ def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     for i in range(len(taxnames)):
         f.write('>%s\n' % taxnames[i])
         f.write('%s\n' % str(np.getbuffer(fasta_nparr[i,:])))
-    print 'wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path)
+    print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
 
 
@@ -116,7 +203,7 @@ def get_min_max_avg_sequence_length(fasta_file):
     m1 = max(mylens)
     m2 = min(mylens)
     mavg = float(sum(mylens))/float(len(mylens))
-    print '%s --- min: %s, max: %s, avg: %.2f' % (fasta_file,m2, m1, mavg)
+    print ('%s --- min: %s, max: %s, avg: %.2f' % (fasta_file,m2, m1, mavg))
 
 def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
     '''
@@ -191,7 +278,7 @@ def read_from_fasta_dedup(file_path):
     first=True
     for l in fasta:
         if l[0]=='>':
-            if first<>True:
+            if first!=True:
                 if name in namects.keys():
                     namects[name]+=1
                 else:
@@ -284,7 +371,7 @@ def bp_genbank_get_CDS_dict(filename):
             except:
                 no_translation_loci.append(id)
                 continue
-            if (en-st-3)/3<>len(prot):
+            if (en-st-3)/3!=len(prot):
                 length_errors.append(id)
             if dir == -1:
                 dnastr = rec.seq[st:en].reverse_complement()
@@ -297,20 +384,6 @@ def bp_genbank_get_CDS_dict(filename):
     return cds, dna, st_en, no_translation_loci, length_errors, filename
 
     pass
-
-def all_gbk_to_fna():
-    from multiprocessing import Pool
-    p=Pool(15)
-    gbkl = get_list_from_file(kraken_file_list)
-    p.map(bp_genbank_to_fasta,gbkl)
-    # n = len(gbkl)
-    # k=1
-    # for i in gbkl:
-    #     fnai = i[:-4] + '.fna'
-    #     ct = bp_genbank_to_fasta(i,fnai)
-    #     print "%i of %i\t-- %i lines\t-- %s" % (k,n,ct,i)
-    #     k+=1
-
 
 def fasta_dict_to_string(fasta_dict):
     a=''
@@ -357,7 +430,7 @@ def run_fastSP_on_two_fastas(ref_file,est_file,out=None):
 def read_alignment_results_file(filepath=None,optional_filename=None):
     pa, fi = os.path.split(filepath)
     myargs = {}
-    if optional_filename<>None:
+    if optional_filename!=None:
         fi=optional_filename
     myargs['file_name'] = fi
 
@@ -452,7 +525,7 @@ def dna_to_protein(dna):
     k = int(len(dna)/3)
     extras = len(dna)-k*3
     if extras>0:
-        print "The sequence given is not divisible by 3, there are %i extra nucleotides, which will be ignored" % extras
+        print ("The sequence given is not divisible by 3, there are %i extra nucleotides, which will be ignored" % extras)
     str_protein = ''
     for i in range(k):
         codon = dna[(i*3):(i*3+3)].upper()
@@ -484,7 +557,7 @@ def get_list_from_file(filepath):
     myf=open(filepath,'r')
     ol=[]
     for i in myf:
-        if i.strip()<>'':
+        if i.strip()!='':
             ol.append(i.strip())
 
     myf.close()
@@ -498,7 +571,8 @@ def make_pbs_file(jobname='nute-job-id',tmstr="04:00:00",queue='secondary',nodes
             nodes=16
         elif queue=='tallis':
             nodes=20
-    if not isinstance(tmstr,str) and not isinstance(tmstr,unicode):
+    # if not isinstance(tmstr,str) and not isinstance(tmstr,unicode):
+    if not isinstance(tmstr, str):
         tmstr=hours_to_wallclock_string(tmstr)
 
     cmdstr='''
@@ -573,12 +647,8 @@ def get_two_trees(a,b):
     tr2 = dendropy.Tree.get(path=b,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
     return tr1, tr2, tax
 
-
-def testbed():
-    print 'this is a test'
-
 def help():
-    print '''
+    print ('''
     Nute Phylogeny Utilities: Command Line Options:
 
     -pbs    Makes a pbs file according to the specifications
@@ -591,7 +661,7 @@ def help():
             -pbsfile    path to the output pbs file
             -commands   file containing commands (optional,
                         default will take from stdin)
-    '''
+    ''')
 
 
 def parse_pbs_args():
@@ -669,7 +739,7 @@ def read_alignment_stats_file(filepath):
         }
         return args
     except:
-        print filepath
+        print (filepath)
         args= {
             'file':filepath,
             'APBM': '',
@@ -691,6 +761,16 @@ def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
     f2=read_from_fasta(subtractfile)
     newkeys=list(set(f1.keys()).difference(set(f2.keys())))
     write_to_fasta(outfile,f1,newkeys)
+
+def get_dict_from_file(filename, delimiter='\t'):
+    myf = open(filename,'r')
+    args = {}
+    for i in myf:
+        if len(i.strip())>0:
+            a=i.strip().split(delimiter)
+            args[a[0]]=a[1]
+    myf.close()
+    return args
 
 def get_dict_from_tab_delimited_file(filename, keysfirst = True):
     myf = open(filename,'r')
