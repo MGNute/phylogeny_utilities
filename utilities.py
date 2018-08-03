@@ -15,6 +15,7 @@ def read_from_fasta(file_path):
     output={}
     fasta=open(file_path,'r')
     first=True
+    seq=''
     for l in fasta:
         if l[0]=='>':
             if first!=True:
@@ -28,6 +29,44 @@ def read_from_fasta(file_path):
     output[name]=seq
     fasta.close()
     return output
+
+def read_from_fastq(file_path):
+    '''
+    Basic FASTQ parser. Returns two dictionary objects. The first is a fasta-dict
+    in the form {'<sequence_name>': <sequence String>}. The second has the quality
+    scores in the form of a numpy array with data type np.uint8. The quality scores
+    have had the bias subtracted (in this case 33).
+    :param file_path:
+    :return:
+    '''
+    fi = open(file_path,'r')
+    ct=0
+    fasta = {}
+    quals = {}
+    nm=''
+    for ln in fi:
+        if ct % 4 == 0:
+            nm = ln.strip()[1:]
+        if ct % 4 ==1:
+            fasta[nm]=ln.strip()
+        if ct % 4 ==2:
+            assert ln[0]=='+'
+        if ct % 4 ==3:
+            quals[nm] = np.frombuffer(bytes(ln.strip(),'utf-8'),dtype=np.uint8) - 33
+            nm=''
+    fi.close()
+    return fasta, quals
+
+def list_from_stdin():
+    l = []
+    while True:
+        a=input()
+        if len(a)==0:
+            break
+        else:
+            l.append(a)
+    return l
+
 
 def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
     """
@@ -192,8 +231,9 @@ def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     f = open(out_file_path,'w')
     for i in range(len(taxnames)):
         f.write('>%s\n' % taxnames[i])
-        f.write('%s\n' % str(np.getbuffer(fasta_nparr[i,:])))
-    print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
+        # f.write('%s\n' % str(np.getbuffer(fasta_nparr[i,:])))
+        f.write(fasta_nparr[i,:].tobytes().decode('utf-8'))
+    # print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
 
 
@@ -624,7 +664,7 @@ def write_list_to_file(mylist,filepath):
     myf=open(filepath,'w')
 
     for i in mylist:
-        myf.write(i + '\n')
+        myf.write(str(i) + '\n')
 
     myf.close()
 
