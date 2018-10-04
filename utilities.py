@@ -44,6 +44,8 @@ def read_from_fastq(file_path):
     fasta = {}
     quals = {}
     nm=''
+    minlen=999999
+    maxlen=0
     for ln in fi:
         if ct % 4 == 0:
             nm = ln.strip()[1:]
@@ -53,9 +55,50 @@ def read_from_fastq(file_path):
             assert ln[0]=='+'
         if ct % 4 ==3:
             quals[nm] = np.frombuffer(bytes(ln.strip(),'utf-8'),dtype=np.uint8) - 33
+            dim=quals[nm].shape[0]
+            minlen = min(minlen,dim)
+            maxlen = max(maxlen,dim)
             nm=''
     fi.close()
+    print('max length: %s\tmin length: %s' % (maxlen,minlen))
     return fasta, quals
+
+def read_fastq_to_qs_histogram(filepath, num_cols, num_rows):
+    fastq = open(filepath,'r')
+    qs = np.zeros((num_rows,num_cols),dtype=np.uint8)
+
+    first=True
+    seq=''
+    ct = 0
+    fastq.readline()
+    for l in fastq:
+        qv=np.frombuffer(bytes(l.strip(),'utf-8'),dtype=np.uint8) - 33
+        qs[ct, :qv.shape[0]]=qv
+        fastq.readline()
+        ct += 1
+
+    fastq.close()
+    cts = np.ones((95,num_cols),dtype=np.int32)
+    for c in range(num_cols):
+        uq = np.unique(qs[:,c],return_counts=True)
+        for j in range(uq[0].shape[0]):
+            cts[uq[0][j]]=uq[1][j]
+    return qs
+
+def get_boxplot_stats(uqs):
+    ncols = uqs.shape[1]
+    nrows = uqs.shape[0]
+
+    out=np.zeros((7,ncols),dtype=np.float64)
+    # probs=uqs.cumsum(0)/np.sum(uqs,0)
+    new = np.vstack((np.zeros(104, dtype=np.float64), uqs.cumsum(0)/np.sum(uqs,0)))
+    probs = [.99,.95,.75,.5,.25,.05,.01]
+    for c in range(ncols):
+        out[:,c] = np.interp(probs, new[:,c], np.arange(new.shape[0]))
+
+    return out
+
+
 
 def list_from_stdin():
     l = []
@@ -383,47 +426,104 @@ def bp_genbank_get_CDS_dict(filename):
     :return:
     '''
     # print filename
-    seq = enumerate(SeqIO.parse(filename,"genbank"))
-    ind, rec = seq.next()
-    p,f = os.path.split(filename)
+    p, f = os.path.split(filename)
+    used_temp = False
+    if f[-3:]=='.gz':
+        temp_fn = '/dev/shm/' + f[:-3]
+        used_temp = True
+        os.system('gunzip -c %s > %s' % (filename,temp_fn))
+        target_filename = temp_fn
+    else:
+        target_filename = filename
+    seq = enumerate(SeqIO.parse(target_filename,"genbank"))
+    # ind, rec = next(seq)
+    # p,f = os.path.split(filename)
     cds = {}
     dna = {}
-    st_en = {}
+    name_pos = {}
+    # gene_names = {}
+    # gene_syns = {}
     no_translation_loci=[]
     length_errors=[]
-    for i in rec.features:
-        if i.type=='CDS':
-            st = i.location.start + 0
-            en = i.location.end + 0
-            dir = i.location.strand
+    while True:
+        try:
+            ind, rec = next(seq)
+        except:
+            break
+        # Getting Sequence ID
+        seqid = rec.__dict__.get('id',None)
 
-            if 'protein_id' in i.qualifiers.keys():
-                id = 'pt:' + i.qualifiers['protein_id'][0]
-            elif 'locus_tag' in i.qualifiers.keys():
-                id = 'lt:' + i.qualifiers['locus_tag'][0]
-            else:
-                id = 'na:' + f + '_' + str(st) + '-' + str(en)
-                # id = 'file-' + str()
+        # Getting NCBI Taxon ID
+        taxid = None
+        if rec.features[0].type == 'source' and 'db_xref' in rec.features[0].qualifiers.keys():
+            for dx in rec.features[0].qualifiers['db_xref']:
+                if dx[0:5]=='taxon':
+                    taxid = dx.replace('taxon:','')
+                    continue
 
-            # print '%s, %s, %s, %s' %(str(st), str(en), str(dir), id)
-            try:
-                prot = i.qualifiers['translation'][0]
-            except:
-                no_translation_loci.append(id)
-                continue
-            if (en-st-3)/3!=len(prot):
-                length_errors.append(id)
-            if dir == -1:
-                dnastr = rec.seq[st:en].reverse_complement()
-            else:
-                dnastr = rec.seq[st:en]
-            cds[id] = prot
-            dna[id] = dnastr
-            st_en[id] = (st,en,dir)
+        project_id = None
+        for i in rec.dbxrefs:
+            if i[:11]=='BioProject:':
+                lr = len(i)
+                project_id=rec.dbxrefs[0][-(lr - 11):]
 
-    return cds, dna, st_en, no_translation_loci, length_errors, filename
+        for i in rec.features:
+            if i.type=='CDS':
+                st = i.location.start + 0
+                en = i.location.end + 0
+                dir = i.location.strand
 
-    pass
+                id = None
+                protein_id = None
+                locus_tag = None
+                if 'protein_id' in i.qualifiers.keys():
+                    id = 'pt:' + i.qualifiers['protein_id'][0]
+                    protein_id = i.qualifiers['protein_id'][0]
+                if 'locus_tag' in i.qualifiers.keys():
+                    locus_tag = i.qualifiers['locus_tag'][0]
+                    if id is None:
+                        id = 'lt:' + i.qualifiers['locus_tag'][0]
+                else:
+                    id = 'na:' + f + '_' + str(st) + '-' + str(en)
+                    # id = 'file-' + str()
+
+                gene_id = None
+                dbx = i.qualifiers.get('db_xref',None)
+                if dbx is not None:
+                    for entry in dbx:
+                        if entry[0:6].lower()=='geneid':
+                            gene_id = entry[7:]
+
+
+                # print '%s, %s, %s, %s' %(str(st), str(en), str(dir), id)
+                try:
+                    prot = i.qualifiers['translation'][0]
+                except:
+                    no_translation_loci.append(id)
+                    continue
+                if (en-st-3)/3!=len(prot):
+                    length_errors.append(id)
+                if dir == -1:
+                    dnastr = rec.seq[st:en].reverse_complement()
+                else:
+                    dnastr = rec.seq[st:en]
+
+                # if 'gene' in i.qualifiers.keys():
+                #     gene_names[id]=i.qualifiers['gene'][0]
+                # if 'gene_synonym' in i.qualifiers.keys():
+                #     gene_syns[id] = i.qualifiers['gene_synonym'][0]
+                g_nm = i.qualifiers.get('gene',[None,])[0]
+                g_nm_sy = i.qualifiers.get('gene_synonym', [None, ])[0]
+                cds[id] = prot
+                dna[id] = dnastr
+
+                fetch_mg_name_format = '%s.%s protein_id=\"%s\" gene_id=\"%s\" project_id=\"%s\"'
+                fetchMG_name = fetch_mg_name_format % (taxid, locus_tag, protein_id, gene_id, project_id)
+                name_pos[id] = (seqid, g_nm, st, en, dir, g_nm_sy, fetchMG_name)
+
+    if used_temp:
+        os.system('rm %s' % temp_fn)
+    return cds, dna, name_pos, no_translation_loci, length_errors, f[:-3]
 
 def fasta_dict_to_string(fasta_dict):
     a=''
@@ -431,25 +531,6 @@ def fasta_dict_to_string(fasta_dict):
         a=a+'>'+i + '\n'
         a=a + fasta_dict[i] + '\n'
     return a
-
-def get_prefix(os=None):
-    if os == None:
-        os = platform.system()
-    prefix_general_windows = 'C:/Users/Michael/Grad School Stuff/Research/Phylogenetics'
-    prefix_general_linux = '/home/mikenute/Phylolab/share'
-    if os == 'Windows':
-        prefix_general = prefix_general_windows
-    else:
-        prefix_general = prefix_general_linux
-    return prefix_general
-
-# def get_true_alignment_path(set):
-#     pref=get_prefix()
-#     return pref + '/Data/RoseDNA/100S1.tar/' + set + '/rose.aln.true.fasta'
-#
-# def get_true_tree_path(set):
-#     pref=get_prefix()
-#     return pref + '/Data/RoseDNA/100S1.tar/' + set + '/rose.tt'
 
 def run_fastSP_on_two_fastas(ref_file,est_file,out=None):
     import subprocess
@@ -802,7 +883,7 @@ def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
     newkeys=list(set(f1.keys()).difference(set(f2.keys())))
     write_to_fasta(outfile,f1,newkeys)
 
-def get_dict_from_file(filename, delimiter='\t'):
+def get_dict_from_file(filename, delimiter='\t', keysfirst = True):
     myf = open(filename,'r')
     args = {}
     for i in myf:
@@ -812,9 +893,24 @@ def get_dict_from_file(filename, delimiter='\t'):
     myf.close()
     return args
 
+def get_dict_from_file_fast(filename, delimiter='\t', keysfirst = True):
+    myf = open(filename,'r')
+    args = {}
+    if keysfirst:
+        args = dict(map(lambda x: x.strip().split(delimiter),[ln for ln in myf if len(ln.strip())>0]))
+    else:
+        args = dict(map(lambda x: (x[1],x[0]), [ln.strip().split(delimiter) for ln in myf if len(ln.strip()) > 0]))
+    # for i in myf:
+    #     if len(i.strip())>0:
+    #         a=i.strip().split(delimiter)
+    #         args[a[0]]=a[1]
+    myf.close()
+    return args
+
 def get_dict_from_tab_delimited_file(filename, keysfirst = True):
     myf = open(filename,'r')
     args = {}
+    ct = 0
     if keysfirst==True:
         for i in myf:
             if len(i.strip())>0:
@@ -825,6 +921,9 @@ def get_dict_from_tab_delimited_file(filename, keysfirst = True):
             if len(i.strip())>0:
                 a=i.strip().split('\t')
                 args[a[1]]=a[0]
+                ct +=1
+                if ct % 10000000 == 0:
+                    print('%s lines done' % ct)
     myf.close()
     return args
 

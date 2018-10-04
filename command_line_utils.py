@@ -3,21 +3,41 @@ from utilities import *
 
 
 
-def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_prefix = ''):
+def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_prefix = '', name_suffix = ''):
     a = read_from_fasta(fasta_path)
-    if name_prefix != '':
-        name_prefix = name_prefix + '_'
+    # if name_prefix != '':
+    #     name_prefix = name_prefix + '_'
+    # if name_suffix != '':
+    #     name_suffix = '_' + name_suffix
     nmap= open(name_map_path,'w')
     newf={}
     ct = 1
     for i in a.keys():
-        newname = name_prefix + str(ct)
+        newname = name_prefix + str(ct) + name_suffix
         newf[newname]=a[i]
         nmap.write(i + '\t' + newname + '\n')
         ct+=1
 
     nmap.close()
     write_to_fasta(new_fasta_path,newf)
+
+def get_max_fasta_seqlen(fasta_file):
+    fasta=open(fasta_file,'r')
+    first=True
+    seq=''
+    ml = 0
+    for l in fasta:
+        if l[0]=='>':
+            if first!=True:
+                ml = max(ml,len(seq))
+            else:
+                first=False
+            name=l[1:].strip()
+            seq=''
+        else:
+            seq=seq + l.strip()
+    fasta.close()
+    print(ml)
 
 def remove_all_blank_columns(fasta_dict,same_length_check=True):
     """
@@ -79,7 +99,7 @@ def remove_all_blank_columns(fasta_dict,same_length_check=True):
     return newfasta
 
 def rename_fasta_by_name_map(inalign,outalign,namemap,keysfirst = True):
-    nm = utilities.get_dict_from_tab_delimited_file(namemap,keysfirst)
+    nm = get_dict_from_tab_delimited_file(namemap,keysfirst)
     initalgn = read_from_fasta(inalign)
     outfasta = {}
     for i in initalgn.keys():
@@ -90,7 +110,7 @@ def rename_fasta_by_name_map(inalign,outalign,namemap,keysfirst = True):
 def rename_tree_by_name_map(intree, outtree, namemap,keysfirst=True):
     import dendropy
     tr = dendropy.Tree.get(path=intree, schema="newick",preserve_underscores=True)
-    nm = utilities.get_dict_from_tab_delimited_file(namemap, keysfirst)
+    nm = get_dict_from_tab_delimited_file(namemap, keysfirst)
     for i in tr.leaf_nodes():
         a=i.taxon.label
         i.taxon.label=str(nm[a])
@@ -113,7 +133,7 @@ def shrink_one_fasta_to_match_another(big_fasta_path, smaller_fasta_path, out_pa
         small = read_from_fasta(smaller_fasta_path)
         new_keys = list(set(big.keys()).intersection(set(small.keys())))
     else:
-        new_keys = utilities.get_list_from_file(smaller_fasta_path)
+        new_keys = get_list_from_file(smaller_fasta_path)
 
     for i in new_keys:
         out_dict[i]=big[i]
@@ -171,8 +191,9 @@ def split_fastq_into_fasta_and_quality(in_path, out_fasta_p, out_quality_p):
     myf.close()
     out_fasta.close()
     out_quality.close()
-    print ("Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
-          (in_fastq, out_fasta_p, out_quality_p))
+    print('%s,%s' % (in_fastq,reads))
+    # print ("Done. Successfully converted fastq file %s into fasta file %s for sequences and %s for quality scores" % \
+    #       (in_fastq, out_fasta_p, out_quality_p))
 
 def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
     ia = read_from_fasta(in_aln)
@@ -229,7 +250,7 @@ def dedupe_and_rename(in_aln, name_map, out_aln, out_mult_file=None):
 
 def make_rc_file(fasta,out_path):
     fas = read_from_fasta(fasta)
-    fasrc = utilities.get_fastadict_reverse_complement(fas)
+    fasrc = get_fastadict_reverse_complement(fas)
     write_to_fasta(out_path,fasrc)
 
 def remove_blanks_from_file(fasta,out_path):
@@ -255,9 +276,10 @@ Options:
         --->Converts a folder full of FastSP results to a tab delimited file
     --AlignmentStatsFold -f [folder_path] -o [output_file_path]
         --->Converts a folder full of Alignment Statistics results to a tab delimited file
-    --SanitizeNames -f [fasta_path] -o [output_fasta_path] -m [name_map_path] -p [prefix (opt)]
-        --->Converts a fasta to another fasta with all taxa renamed as 'prefix_#'. Conversions are
-            output to a tab-delimited file name_map_path
+    --SanitizeNames -f [fasta_path] -o [output_fasta_path] -m [name_map_path] -p [prefix (opt)] -s [suffix (opt)]
+        --->Converts a fasta to another fasta with all taxa renamed as 'prefix_#_suffix'. Conversions are
+            output to a tab-delimited file name_map_path. If prefex/suffix are ommitted, no underscore is prepended
+            or appended.
     --RenameAlignment -ia [in_alignment] -nm [name_map] -oa [out_alignment] OPTIONAL: -ks
         --->Converts a fasta to another fasta with all taxa renamed according to a tab-delimited name
             map.
@@ -288,7 +310,10 @@ Options:
             complement.
     --PDist [in_fasta] OPTIONAL: -max
         --->Computes average p-distance for the fasta and prints it to stdout. If '-max' option is given, computes max
-            p-distance rather than avg. (Note: File name must be second argument
+            p-distance rather than avg. (Note: File name must be second argument)
+    --MaxLen [in_fasta]
+        --->Scans the fasta file and records the maximum length of a sequence in the file. Useful e.g. for
+            reading a not-necessarily-aligned fasta file into a numpy array.
         ''')
         sys.exit(0)
     if sys.argv[1]=='--shrink-to-fit':
@@ -311,8 +336,8 @@ Options:
         big_fasta = sys.argv[sys.argv.index('-b')+1]
         small_fasta = sys.argv[sys.argv.index('-s')+1]
         out_path = sys.argv[sys.argv.index('-o')+1]
-        import utilities
-        utilities.shrink_fasta_to_complement_of_another(big_fasta,small_fasta,out_path)
+        # import utilities
+        shrink_fasta_to_complement_of_another(big_fasta,small_fasta,out_path)
     elif sys.argv[1]=='--remove-blank-columns':
         fasta = sys.argv[sys.argv.index('-f')+1]
         if '-o' in sys.argv:
@@ -333,7 +358,7 @@ Options:
         outfile=sys.argv[sys.argv.index('-o')+1]
         print ("converting Alignment Stats folder %s to tab-delimited file %s" % (fold,outfile))
         # from phylogeny_utilities.utilities import *
-        from utilities import *
+        # from utilities import *
         alignment_stats_dir_to_tabd(fold,outfile)
     elif sys.argv[1]=='--SanitizeNames':
         infile=sys.argv[sys.argv.index('-f')+1]
@@ -343,8 +368,12 @@ Options:
             prefix = sys.argv[sys.argv.index('-p')+1]
         else:
             prefix = ''
+        if '-s' in sys.argv:
+            suffix = sys.argv[sys.argv.index('-s')+1]
+        else:
+            suffix = ''
         print ("converting fasta %s to %s with sanitized names" % (infile,outfile))
-        rename_fasta_to_numbers(infile,name_map,outfile,prefix)
+        rename_fasta_to_numbers(infile,name_map,outfile,prefix,suffix)
     elif sys.argv[1]=='--RenameAlignment':
         # intree=sys.argv[sys.argv.index('-it')+1]
         inaln = sys.argv[sys.argv.index('-ia') + 1]
@@ -400,5 +429,8 @@ Options:
         inaln = sys.argv[2]
         pd = get_avg_pdistance_of_fasta(inaln,'-max' in sys.argv)
         print(pd)
+    elif sys.argv[1] == '--MaxLen':
+        inaln = sys.argv[2]
+        get_max_fasta_seqlen(inaln)
     else:
         print ("No major option recognized. Check your \'--\' option and try again.")
