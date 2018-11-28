@@ -1,8 +1,12 @@
-# from phylogeny_utilities.command_line_utils import *
-import re, platform, time, os
+    # from phylogeny_utilities.command_line_utils import *
+import re, platform, time, os, sys, json
 import numpy as np
+import matplotlib
+if platform.system()=='Linux':
+    matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import dendropy
+import phylogeny_utilities.common_vars as cv
 from Bio import SeqIO
 
 def read_from_fasta(file_path):
@@ -229,6 +233,42 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
         newfasta[k] = str(np.getbuffer(nparr[i,maskcols]))
     return newfasta
 
+def get_consensus_sequence(fasta, single_arb=True):
+    '''
+    Returns the consensus sequence from a multiple sequence alignment. If some oclumns have ties, reutnrs an
+    arbitrary one if single_arb is True, and a list of all possibles if it is false. fasta can either be
+    a list of aligned sequences or a fasta dict.
+    :param fasta:
+    :param single_arb:
+    :return:
+    '''
+    from collections import Counter
+    assert isinstance(fasta,list) or isinstance(fasta,dict)
+    get_most_common = lambda test: [i[0] for i in test.most_common()[:sum(map(lambda x: 1 if x==test.most_common(1)[0][1] else 0, test.values()))]]
+    # get_most_common = lambda test: (i[0] for i in test.most_common()[:sum(map(lambda x: 1 if x == test.most_common(1)[0][1] else 0, test.values()))])
+    if isinstance(fasta,dict):
+        l=len(next(iter(fasta.values())))
+        assert l>2
+        mostcomms=list(map(lambda x: get_most_common(Counter(map(lambda y: y[x], fasta.values()))), range(l)))
+    else:
+        # ***must be a list otherwise***
+        l=len(fasta[0])
+        assert l>2
+        mostcomms = list(map(lambda x: get_most_common(Counter(map(lambda y: y[x], fasta))), range(l)))
+    if single_arb:
+        return ''.join(map(lambda x: x[0],mostcomms))
+    else:
+        f=[[a,b] for a in mostcomms[0] for b in mostcomms[1]]
+        ct = 2
+        while ct < len(mostcomms):
+            f = [a + [b,] for a in f for b in mostcomms[ct]]
+            ct += 1
+        return list(map(lambda x: ''.join(x),f))
+
+
+
+
+
 def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
     f = read_from_fasta(fasta_path)
     taxn, fnp = fasta_dict_to_nparray(f)
@@ -251,6 +291,10 @@ def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
     else:
         return maxpd
 
+def compute_p_dist(np_seq1, np_seq2):
+    comm = np.sum((np_seq1 != 45) & (np_seq2 != 45),dtype=np.float64)
+    same = np.sum((np_seq1 != 45) & (np_seq2 != 45) & (np_seq1==np_seq2), dtype=np.float64)
+    return (1-same/comm, int(comm), int(same))
 
 def fasta_dict_to_nparray(fasta):
     ntax = len(fasta.keys())
@@ -273,9 +317,9 @@ def fasta_dict_to_nparray(fasta):
 def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     f = open(out_file_path,'w')
     for i in range(len(taxnames)):
-        f.write('>%s\n' % taxnames[i])
+        c = f.write('>%s\n' % taxnames[i])
         # f.write('%s\n' % str(np.getbuffer(fasta_nparr[i,:])))
-        f.write(fasta_nparr[i,:].tobytes().decode('utf-8'))
+        c = f.write(fasta_nparr[i,:].tobytes().decode('utf-8') + '\n')
     # print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
 
@@ -288,7 +332,58 @@ def get_min_max_avg_sequence_length(fasta_file):
     mavg = float(sum(mylens))/float(len(mylens))
     print ('%s --- min: %s, max: %s, avg: %.2f' % (fasta_file,m2, m1, mavg))
 
-def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
+
+def sepp_json_to_tsv(in_path, out_path):
+    if out_path[-4:] not in ('.tsv','.txt','.tab'):
+        out_path += '.txt'
+    inf=open(in_path,'r')
+    sepp_json = json.load(inf)
+    inf.close()
+    outf = open(out_path,'w')
+    headers = ['placements_ID','nm[0]','nm[1]']
+    flds=['edge', 'logL', 'prob', 'distal', 'pendant']
+    for i in range(7):
+        headers+=list(map(lambda x: x+'_'+str(i),flds))
+    headers_str='\t'.join(headers) + '\n'
+    outf.write(headers_str)
+    id = 0
+    sub_str = '\t'.join(['%s',]*38) + '\n'
+    for pl in sepp_json['placements']:
+        all_pls = pl['p'][0]
+        if len(pl['p'])>1:
+            for pl_i in range(1,len(pl['p'])):
+                all_pls += pl['p'][pl_i]
+        if len(pl['p'])<7:
+            for pl_i in range(7-len(pl['p'])):
+                all_pls += [-1, 0.0, 0.0, 0.0, 0.0]
+        for nm_id in range(len(pl['nm'])):
+            rw = [id,pl['nm'][nm_id][0],pl['nm'][nm_id][1]]
+            rw += all_pls
+            outf.write(sub_str % tuple(rw))
+            # print(len(rw))
+            # print(rw)
+            # print(sub_str % tuple(rw))
+        id += 1
+    outf.close()
+
+def make_histogram_of_branch_lengths(tree_file, out_path):
+    tr=dendropy.Tree.get(path=tree_file,schema='newick')
+    internals = [i.length for i in tr.postorder_internal_edge_iter(filter_fn=lambda x: x.length is not None)]
+    leaves = [i.length for i in tr.leaf_edge_iter(filter_fn=lambda x: x.length is not None)]
+
+    fig, axs = plt.subplots(2, 1, sharex=True, tight_layout=True)
+    axs[0].hist(internals, bins=20)
+    axs[0].set_xlabel('ln [internal]')
+    axs[1].hist(internals, bins=20)
+    axs[1].set_xlabel('ln [leaves]')
+
+    if out_path[-4:]!='.pdf':
+        out_path += '.pdf'
+    plt.savefig(out_path)
+    plt.clf()
+
+
+def make_histogram_of_sequence_lengths(fasta_file,out_figure_path,subtitle=None):
     '''
     Does pretty much what it says. Saves the file in format dependent on the path, so best
     to end the path with '.pdf'
@@ -296,12 +391,22 @@ def make_histogram_of_sequence_lengths(fasta_file,out_figure_path):
     :param out_figure_path:
     :return:
     '''
+
     a = read_from_fasta(fasta_file)
-    lsnp = np.array(map(len,a.values()))
-    plt.hist(lsnp,'auto')
+    lsnp = np.array(list(map(len,a.values())))
+    q99=np.quantile(lsnp,0.99)
+    q01=np.quantile(lsnp,0.01)
+    m=np.mean(lsnp)
+
+
+    # n, bn, pat=plt.hist(lsnp,'auto',range=(min(q01,m*0.75),max(q99,m*1.25)))
+    n, bn, pat = plt.hist(lsnp, 65, range=(min(q01, m * 0.75), max(q99, m * 1.25)))
+    # print(bn.shape)
     plt.xlabel('# Base Pairs')
     plt.ylabel('count')
-    plt.title('Seq-Len Histogram: %s' % fasta_file)
+    plt.suptitle('Seq-Len Histogram: %s' % fasta_file)
+    if subtitle is not None:
+        plt.title(subtitle)
     plt.savefig(out_figure_path)
     plt.clf()
 
@@ -632,45 +737,77 @@ def write_results_lines_to_file(args_list,out_file):
 
     outf.close()
 
-def dna_to_protein(dna):
-    # codon lookup table transcribed from wikipedia
-    codon_lookup = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
-                    'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
-                    'CAA':'Q','CAG':'Q','GAA':'E','GAG':'E','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
-                    'CAT':'H','CAC':'H','ATT':'I','ATC':'I','ATA':'I','TTA':'L','TTG':'L','CTT':'L',
-                    'CTC':'L','CTA':'L','CTG':'L','AAA':'K','AAG':'K','ATG':'M','TTT':'F','TTC':'F',
-                    'CCT':'P','CCC':'P','CCA':'P','CCG':'P','TCT':'S','TCC':'S','TCA':'S','TCG':'S',
-                    'AGT':'S','AGC':'S','ACT':'T','ACC':'T','ACA':'T','ACG':'T','TGG':'W','TAT':'Y',
-                    'TAC':'Y','GTT':'V','GTC':'V','GTA':'V','GTG':'V','TAA':'(stop)','TGA':'(stop)',
-                    'TAG':'(stop)'}
+def open_json(fn):
+    t=open(fn,'r')
+    fs=json.load(t)
+    t.close()
+    return fs
+
+def dna_to_protein(dna,verbose=False):
+    # cv.codon lookup table transcribed from wikipedia
+    # cv.codon_lookup = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
+    #                 'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
+    #                 'CAA':'Q','CAG':'Q','GAA':'E','GAG':'E','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
+    #                 'CAT':'H','CAC':'H','ATT':'I','ATC':'I','ATA':'I','TTA':'L','TTG':'L','CTT':'L',
+    #                 'CTC':'L','CTA':'L','CTG':'L','AAA':'K','AAG':'K','ATG':'M','TTT':'F','TTC':'F',
+    #                 'CCT':'P','CCC':'P','CCA':'P','CCG':'P','TCT':'S','TCC':'S','TCA':'S','TCG':'S',
+    #                 'AGT':'S','AGC':'S','ACT':'T','ACC':'T','ACA':'T','ACG':'T','TGG':'W','TAT':'Y',
+    #                 'TAC':'Y','GTT':'V','GTC':'V','GTA':'V','GTG':'V','TAA':'(stop)','TGA':'(stop)',
+    #                 'TAG':'(stop)'}
     k = int(len(dna)/3)
-    extras = len(dna)-k*3
-    if extras>0:
-        print ("The sequence given is not divisible by 3, there are %i extra nucleotides, which will be ignored" % extras)
+    # extras = len(dna)-k*3
+    # if extras>0 and verbose:
+    #     print ("The sequence given is not divisible by 3, there are %i extra nucleotides, which will be ignored" % extras)
     str_protein = ''
     for i in range(k):
         codon = dna[(i*3):(i*3+3)].upper()
-        str_protein = str_protein + codon_lookup[codon]
-    str_protein = str_protein.replace('(stop)','')
+        str_protein = str_protein + cv.codons_nostop[codon]
+    # str_protein = str_protein.replace('(stop)','')
     return str_protein
 
-def aligned_protein_to_nucleotides(prot,raw_dna):
-    codon_lookup = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
-                'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
-                'CAA':'Q','CAG':'Q','GAA':'E','GAG':'E','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
-                'CAT':'H','CAC':'H','ATT':'I','ATC':'I','ATA':'I','TTA':'L','TTG':'L','CTT':'L',
-                'CTC':'L','CTA':'L','CTG':'L','AAA':'K','AAG':'K','ATG':'M','TTT':'F','TTC':'F',
-                'CCT':'P','CCC':'P','CCA':'P','CCG':'P','TCT':'S','TCC':'S','TCA':'S','TCG':'S',
-                'AGT':'S','AGC':'S','ACT':'T','ACC':'T','ACA':'T','ACG':'T','TGG':'W','TAT':'Y',
-                'TAC':'Y','GTT':'V','GTC':'V','GTA':'V','GTG':'V','TAA':'(stop)','TGA':'(stop)',
-                'TAG':'(stop)'}
-    #first check that they are the same:
-    raw_prot=prot.replace('-','')
-    prot_from_dna=dna_to_protein(raw_dna)
-    prot_from_dna_minus_stop=prot_from_dna.replace('(stop)','')
-    assert raw_prot==prot_from_dna_minus_stop, "Protein and DNA sequence do not match"
-    # assert raw_prot==prot_from_dna[0:len(raw_prot)]
+def dna_to_protein_fast(s):
+    prot_seq=''.join(map(lambda x: cv.codons_nostop.get(x,'X'), map(''.join, zip(*[iter(s.upper())]*3))))
 
+def get_max_fasta_seqlen(fasta_file):
+    '''
+    Gets the dimensions of a fasta file
+    :param fasta_file:
+    :return: returns a tuple with (# of columns, # of rows) in
+        the fasta.
+    '''
+    fasta=open(fasta_file,'r')
+    first=True
+    seq=''
+    ml = 0
+    seq_ct = 0
+    for l in fasta:
+        if l[0]=='>':
+            seq_ct+=1
+            if first!=True:
+                ml = max(ml,len(seq))
+            else:
+                first=False
+            name=l[1:].strip()
+            seq=''
+        else:
+            seq=seq + l.strip()
+    fasta.close()
+    return (ml, seq_ct)
+
+def aligned_protein_to_nucleotides(prot,raw_dna):
+    '''
+    NOT CURRENTLY IMPLEMENTED
+    :param prot:
+    :param raw_dna:
+    :return:
+    '''
+    # #first check that they are the same:
+    # raw_prot=prot.replace('-','')
+    # prot_from_dna=dna_to_protein(raw_dna)
+    # prot_from_dna_minus_stop=prot_from_dna.replace('(stop)','')
+    # assert raw_prot==prot_from_dna_minus_stop, "Protein and DNA sequence do not match"
+    # # assert raw_prot==prot_from_dna[0:len(raw_prot)]
+    pass
 
 
 
@@ -743,10 +880,8 @@ cd $PBS_O_WORKDIR
 
 def write_list_to_file(mylist,filepath):
     myf=open(filepath,'w')
-
     for i in mylist:
         myf.write(str(i) + '\n')
-
     myf.close()
 
 def write_dict_to_file(mydict, filepath, delimiter='\t'):

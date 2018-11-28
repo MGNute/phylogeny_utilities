@@ -21,24 +21,6 @@ def rename_fasta_to_numbers(fasta_path, name_map_path, new_fasta_path, name_pref
     nmap.close()
     write_to_fasta(new_fasta_path,newf)
 
-def get_max_fasta_seqlen(fasta_file):
-    fasta=open(fasta_file,'r')
-    first=True
-    seq=''
-    ml = 0
-    for l in fasta:
-        if l[0]=='>':
-            if first!=True:
-                ml = max(ml,len(seq))
-            else:
-                first=False
-            name=l[1:].strip()
-            seq=''
-        else:
-            seq=seq + l.strip()
-    fasta.close()
-    print(ml)
-
 def remove_all_blank_columns(fasta_dict,same_length_check=True):
     """
     Takes a dictionary representing a fasta file and removes any columns that are blank for all taxa. Data are
