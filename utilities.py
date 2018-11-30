@@ -323,6 +323,17 @@ def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     # print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
 
+def convert_raxml_reduced_to_fasta(raxml_reduced, fasta_output_path):
+    red_f = open(raxml_reduced,'r')
+    lw=red_f.readline()
+
+    fa={}
+    for ln in red_f:
+        seq = ln.strip().split(" ")
+        fa[seq[0]]=seq[1]
+
+    write_to_fasta(fasta_output_path,fa)
+
 
 def get_min_max_avg_sequence_length(fasta_file):
     a = read_from_fasta(fasta_file)
