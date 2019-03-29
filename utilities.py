@@ -1,13 +1,49 @@
     # from phylogeny_utilities.command_line_utils import *
 import re, platform, time, os, sys, json
 import numpy as np
+import multiprocessing
 import matplotlib
 if platform.system()=='Linux':
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import dendropy
-import phylogeny_utilities.common_vars as cv
+# import phylogeny_utilities.common_vars as cv
+try:
+    import common_vars as cv
+except:
+    import phylogeny_utilities.common_vars as cv
 from Bio import SeqIO
+
+cog_lookup = {'COG0012':'Ribosome-binding ATPase YchF, GTP1/OBG family',
+              'COG0016':'Phenylalanyl-tRNA synthetase alpha subunit','COG0018':'Arginyl-tRNA synthetase',
+              'COG0048':'Ribosomal protein S12','COG0049':'Ribosomal protein S7','COG0052':'Ribosomal protein S2',
+              'COG0080':'Ribosomal protein L11','COG0081':'Ribosomal protein L1',
+              'COG0085':'DNA-directed RNA polymerase, beta subunit/140 kD subunit',
+              'COG0087':'Ribosomal protein L3','COG0088':'Ribosomal protein L4',
+              'COG0090':'Ribosomal protein L2','COG0091':'Ribosomal protein L22',
+              'COG0092':'Ribosomal protein S3','COG0093':'Ribosomal protein L14','COG0094':'Ribosomal protein L5','COG0096':'Ribosomal protein S8','COG0097':'Ribosomal protein L6P/L9E','COG0098':'Ribosomal protein S5','COG0099':'Ribosomal protein S13','COG0100':'Ribosomal protein S11','COG0102':'Ribosomal protein L13','COG0103':'Ribosomal protein S9','COG0124':'Histidyl-tRNA synthetase','COG0172':'Seryl-tRNA synthetase','COG0184':'Ribosomal protein S15P/S13E','COG0185':'Ribosomal protein S19','COG0186':'Ribosomal protein S17','COG0197':'Ribosomal protein L16/L10AE','COG0200':'Ribosomal protein L15','COG0201':'Preprotein translocase subunit SecY','COG0202':'DNA-directed RNA polymerase, alpha subunit/40 kD subunit','COG0215':'Cysteinyl-tRNA synthetase','COG0256':'Ribosomal protein L18','COG0495':'Leucyl-tRNA synthetase','COG0522':'Ribosomal protein S4 or related protein','COG0525':'Valyl-tRNA synthetase','COG0533':'tRNA A37 threonylcarbamoyltransferase TsaD','COG0541':'Signal recognition particle GTPase','COG0552':'Signal recognition particle GTPase'}
+
+
+codon_lookup = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
+                    'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
+                    'CAA':'Q','CAG':'Q','GAA':'E','GAG':'E','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
+                    'CAT':'H','CAC':'H','ATT':'I','ATC':'I','ATA':'I','TTA':'L','TTG':'L','CTT':'L',
+                    'CTC':'L','CTA':'L','CTG':'L','AAA':'K','AAG':'K','ATG':'M','TTT':'F','TTC':'F',
+                    'CCT':'P','CCC':'P','CCA':'P','CCG':'P','TCT':'S','TCC':'S','TCA':'S','TCG':'S',
+                    'AGT':'S','AGC':'S','ACT':'T','ACC':'T','ACA':'T','ACG':'T','TGG':'W','TAT':'Y',
+                    'TAC':'Y','GTT':'V','GTC':'V','GTA':'V','GTG':'V','TAA':'(stop)','TGA':'(stop)',
+                    'TAG':'(stop)'}
+codons_nostop = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
+                    'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
+                    'CAA':'Q','CAG':'Q','GAA':'E','GAG':'E','GGT':'G','GGC':'G','GGA':'G','GGG':'G',
+                    'CAT':'H','CAC':'H','ATT':'I','ATC':'I','ATA':'I','TTA':'L','TTG':'L','CTT':'L',
+                    'CTC':'L','CTA':'L','CTG':'L','AAA':'K','AAG':'K','ATG':'M','TTT':'F','TTC':'F',
+                    'CCT':'P','CCC':'P','CCA':'P','CCG':'P','TCT':'S','TCC':'S','TCA':'S','TCG':'S',
+                    'AGT':'S','AGC':'S','ACT':'T','ACC':'T','ACA':'T','ACG':'T','TGG':'W','TAT':'Y',
+                    'TAC':'Y','GTT':'V','GTC':'V','GTA':'V','GTG':'V','TAA':'','TGA':'',
+                    'TAG':''}
+
+
 
 def read_from_fasta(file_path):
     """
@@ -66,6 +102,88 @@ def read_from_fastq(file_path):
     fi.close()
     print('max length: %s\tmin length: %s' % (maxlen,minlen))
     return fasta, quals
+def delete_taxa_and_remove_all_blank_columns_np(fasta_dict, subset_keys=None):
+    '''
+
+    :param fasta_dict:
+    :return:
+    '''
+    tax, fanp = fasta_dict_to_nparray(fasta_dict)
+    if subset_keys is not None:  # delete some taxa...
+        remain_keys=list(set(fasta_dict.keys()).difference(set(subset_keys)))
+        diff_keys=list(set(fasta_dict.keys()).difference(set(remain_keys)))
+        diff_inds=list(map(lambda x: tax.index(x), diff_keys))
+        diff_inds.sort()
+        fanp = np.delete(fanp,diff_inds,0)
+        tax = list(map(lambda x: tax[x], np.delete(np.arange(len(tax)),diff_inds,0)))
+
+    # remove columns that are fully blank
+    colsums=np.sum((fanp==45),0)
+    nrows=fanp.shape[0]
+    allblank=list(np.where(colsums==nrows)[0])
+    fanp=np.delete(fanp,allblank,1)
+    return tax,fanp
+
+
+
+def remove_all_blank_columns_utils(fasta_dict,same_length_check=True):
+    """
+    Takes a dictionary representing a fasta file and removes any columns that are blank for all taxa. Data are
+    assumed to be aligned starting with the first column in each string.
+
+    NOTE: the operations in this function are in-place on the object provided by pythons nature, so while it
+    returns a dictionary, catching the return value is not strictly necessary and the input will be
+    modified after the fact.
+
+    :param fasta_dict (dict): fasta dictionary (keys=taxon names, values=alignment strings)
+    :param same_length_check (boolean) : OPTIONAL (default=True) If True, will throw an error if all sequences
+        in fasta_dict are not the same length.
+    :return: fasta_dict: dictionary with columns removed.
+    """
+    seqs_list = list(fasta_dict.values())
+    num_seqs=len(seqs_list)
+    seq_len = len(seqs_list[0])
+
+    # check that all the sequences are the same length
+    if same_length_check==True:
+        for i in fasta_dict.values():
+            if len(i) != seq_len:
+                print ('The sequences were not all the same length.')
+                return fasta_dict, -1
+
+    # identify columns that are blank for every taxon
+    all_blanks_list = []
+    for i in range(seq_len):
+        allblank=True
+        for j in fasta_dict.values():
+            if j[i]!='-':
+                allblank=False
+                break
+        if allblank==True:
+            all_blanks_list.append(i)
+
+    newfasta={}
+    for i in fasta_dict.keys():
+        newfasta[i]=''
+
+    non_blanks=list(set(range(seq_len)).difference(set(all_blanks_list)))
+    # remove those columns (in place, so do it in reverse order)
+    if len(all_blanks_list)>0:
+        # all_blanks_list.sort(reverse=True)
+        non_blanks.sort()
+
+        for i in fasta_dict.keys():
+            old=fasta_dict[i]
+            new=''
+            for j in non_blanks:
+                new = new + old[j]
+            newfasta[i]=new
+    else:
+        for i in fasta_dict.keys():
+            newfasta[i]=fasta_dict[i]
+
+    # return newfasta, all_blanks_list
+    return newfasta
 
 def read_fastq_to_qs_histogram(filepath, num_cols, num_rows):
     fastq = open(filepath,'r')
@@ -114,7 +232,6 @@ def list_from_stdin():
             l.append(a)
     return l
 
-
 def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
     """
     Takes a fasta dictionary (keys=taxon names, values=alignment strings) and writes it to a file. Contains
@@ -127,6 +244,7 @@ def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=Fal
     full sequence with blank ('-') characters removed.
     :return:
     """
+
     if subset_keys==None:
         mykeys=fasta_dict.keys()
     else:
@@ -146,6 +264,38 @@ def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=Fal
     fasta.close()
     if not quiet:
         print ('wrote file: ' + out_file_path + ' with the specified keys.')
+
+# def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=False):
+#     """
+#     Takes a fasta dictionary (keys=taxon names, values=alignment strings) and writes it to a file. Contains
+#     optional variables to specify only a subset of keys to write, or to write strings without blanks (assumed
+#     to be '-').
+#     :param out_file_path (string): system-readable path to write to
+#     :param fasta_dict (dict): fasta dictionary
+#     :param subset_keys: OPTIONAL iterator with values representing taxon names to include.
+#     :param raw: OPTIONAL (default: False) if TRUE, writes the "raw" (unaligned) sequence, which is the
+#     full sequence with blank ('-') characters removed.
+#     :return:
+#     """
+#     if subset_keys==None:
+#         mykeys=fasta_dict.keys()
+#     else:
+#         mykeys=list(set(subset_keys).intersection(fasta_dict.keys()))
+#         leftover_keys=list(set(subset_keys).difference(fasta_dict.keys()))
+#         if not quiet:
+#             print ('There were ' + str(len(leftover_keys)) + ' keys in the subset that were not in the original data.\n')
+#
+#
+#     fasta=open(out_file_path,'w')
+#     for i in mykeys:
+#         fasta.write('>'+i+'\n')
+#         if raw==False:
+#             fasta.write(fasta_dict[i]+'\n')
+#         else:
+#             fasta.write(fasta_dict[i].replace('-','')+'\n')
+#     fasta.close()
+#     if not quiet:
+#         print ('wrote file: ' + out_file_path + ' with the specified keys.')
 
 
 def read_from_aligned_phylip(file_path,as_nparray=False):
@@ -266,28 +416,63 @@ def get_consensus_sequence(fasta, single_arb=True):
         return list(map(lambda x: ''.join(x),f))
 
 
-
-
-
 def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
     f = read_from_fasta(fasta_path)
     taxn, fnp = fasta_dict_to_nparray(f)
+    return get_avg_pdistance_of_nparray(fnp, getmax)
+
+def get_avg_pdistance_of_list(seq_list, getmax=False):
+    '''
+    NOTE: all seqs in list must have the same length. If not, an error will arise.
+    :param seq_list:
+    :param getmax:
+    :return:
+    '''
+    all_lens=list(set(map(len, seq_list)))
+    assert (len(all_lens)==1), "sequences in seq_list are not all the same. some lengths are: %s" % all_lens[:min(5,len(all_lens))]
+    fnp = np.zeros((len(seq_list), len(seq_list[0])), dtype=np.uint8)
+    for i in range(len(seq_list)):
+        fnp[i,:] = str2nparr(seq_list[i])
+    return get_avg_pdistance_of_nparray(fnp)
+
+
+def get_avg_pdistance_of_nparray(fnp, getmax=False, weighted=False):
+    '''
+    Computes average pairwise p-distance from an NP-array of uint8 representing an MSA.
+    :param fnp:
+    :param getmax: if True, return the max p-distance isntead of the average (default: False)
+    :param weighted: if True, return the weighted p-distance instead of the raw average
+    :return: (pd, equal_site_ct, common_site_ct, pair_ct)
+    '''
+
+    # f = read_from_fasta(fasta_path)
+    # taxn, fnp = fasta_dict_to_nparray(f)
+
     maxpd = 0.
     run_tot = 0.
     run_ct = 0
+    comm_sum=0
+    same_sum=0
     for i in range(fnp.shape[0]):
         for j in range(i):
             comm = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45),dtype=np.float64)
             same = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45) & (fnp[i,:]==fnp[j,:]),dtype=np.float64)
             run_tot+= 1.- same / comm
             run_ct += 1
+            same_sum += same
+            comm_sum += comm
             if (1. - same / comm > maxpd):
                 maxpd = 1. - same / comm
             # print('i: %s\tj: %s\tcomm: %s\tsame: %s' % (i,j,comm,same))
-    pd = run_tot / float(run_ct)
+
     # print ('Avg P-Distance: %s' % pd)
     if getmax==False:
-        return pd
+        if weighted:
+            pd = 1.0 - same_sum / comm_sum
+            return pd, same_sum, comm_sum, run_ct
+        else:
+            pd = run_tot / float(run_ct)
+            return pd, same_sum, comm_sum, run_ct
     else:
         return maxpd
 
@@ -296,23 +481,92 @@ def compute_p_dist(np_seq1, np_seq2):
     same = np.sum((np_seq1 != 45) & (np_seq2 != 45) & (np_seq1==np_seq2), dtype=np.float64)
     return (1-same/comm, int(comm), int(same))
 
-def fasta_dict_to_nparray(fasta):
+def fasta_dict_to_nparray(fasta, taxnames=None, order='C'):
     ntax = len(fasta.keys())
     ncols = max(map(len,fasta.values()))
-    nparr = np.zeros((ntax,ncols),dtype=np.uint8)
-    taxnames=[]
-    # for i in range(ntax):
-    i=0
-    for k in fasta.keys():
-        taxnames.append(k)
-        seq = fasta[k]
-        ls = len(seq)
-        nparr[i,:ls]=np.frombuffer(bytes(seq,'utf8'),dtype=np.uint8)
-        if ls < ncols:
-            nparr[i,ls:]=45
-        i+=1
+    nparr = np.zeros((ntax,ncols),dtype=np.uint8,order=order)
+    if taxnames is None:
+        taxnames=[]
+        # for i in range(ntax):
+        i=0
+        for k in fasta.keys():
+            taxnames.append(k)
+            seq = fasta[k]
+            ls = len(seq)
+            nparr[i,:ls]=np.frombuffer(bytes(seq,'utf8'),dtype=np.uint8)
+            if ls < ncols:
+                nparr[i,ls:]=45
+            i+=1
+    else:
+        for i in range(len(taxnames)):
+            seq = fasta[taxnames[i]]
+            ls = len(seq)
+            nparr[i,:ls]=np.frombuffer(bytes(seq,'utf8'),dtype=np.uint8)
+            if ls < ncols:
+                nparr[i,ls:]=45
+    if order=='F':
+        nparrF=np.array(nparr, copy=True, order='F')
+        return taxnames, nparrF
+    else:
+        return taxnames, nparr
 
-    return taxnames, nparr
+
+def nparr2str(nparr):
+    return nparr[:].tobytes().decode('utf-8')
+    # if len(nparr.shape)>1:
+    #     return nparr[row,:].tobytes().decode('utf-8')
+    # else:
+
+
+def str2nparr(seq):
+    return np.frombuffer(bytes(seq, 'utf8'), dtype=np.uint8)
+
+def pdist(s1, s2, all=False):
+    '''
+    returns the p-distance. Blanks are '-' ONLY.
+    :param s1:
+    :param s2:
+    :return:
+    '''
+    assert len(s1)==len(s2), "lengths do not match"
+    l=len(s1)
+    a=np.zeros((2,l),dtype=np.uint8)
+    a[0,]=str2nparr(s1)
+    a[1,]=str2nparr(s2)
+    c = np.sum((a[0,] != 45) & (a[1,] != 45))
+    s = np.sum((a[0,] != 45) & (a[1,] != 45) & (a[0,]==a[1,]))
+    if all:
+        return 1.0 - float(s)/float(c), s, c
+    else:
+        return 1.0 - float(s)/float(c)
+
+
+def compute_distinct_seq_aln_patterns(fasta_dict, return_numpy_array=False):
+    '''
+    Computes the number of distinct sequences and alignment patterns
+    in an MSA, as RAxML might do to start up.
+    :param fasta_dict:
+    :return: tuple: (# seqs, # patterns) unless return_numpy_array is True,
+    then it just returns the whole array (Fortran order!)
+    '''
+    nm2cls, eqcls = get_fasta_duplicate_datastruct(fasta_dict)
+    # start by making a fasta_dict that dedups the sequences:
+    fasm = dict(map(lambda x: (x['members'][0], x['seq']), eqcls.values()))
+    n_seqs = len(fasm)
+    tax, fasmarr = fasta_dict_to_nparray(fasm, order='F')
+    seqs=[]
+    for i in range(fasmarr.shape[1]):
+        if np.sum(fasmarr[:,i]!=45)>0:
+            seqs.append(nparr2str(fasmarr[:,i]))
+    seqs_s=list(set(seqs))
+    n_pats = len(seqs_s)
+    if return_numpy_array:
+        fasmarrF=np.zeros((n_seqs,n_pats),dtype=np.uint8, order='F')
+        for i in range(n_pats):
+            fasmarrF[:,i]=str2nparr(seqs_s[i])
+        return fasmarrF
+    else:
+        return (n_seqs, n_pats)
 
 def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     f = open(out_file_path,'w')
@@ -322,6 +576,7 @@ def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
         c = f.write(fasta_nparr[i,:].tobytes().decode('utf-8') + '\n')
     # print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
+
 
 def convert_raxml_reduced_to_fasta(raxml_reduced, fasta_output_path):
     red_f = open(raxml_reduced,'r')
@@ -772,12 +1027,12 @@ def dna_to_protein(dna,verbose=False):
     str_protein = ''
     for i in range(k):
         codon = dna[(i*3):(i*3+3)].upper()
-        str_protein = str_protein + cv.codons_nostop[codon]
+        str_protein = str_protein + codons_nostop[codon]
     # str_protein = str_protein.replace('(stop)','')
     return str_protein
 
 def dna_to_protein_fast(s):
-    prot_seq=''.join(map(lambda x: cv.codons_nostop.get(x,'X'), map(''.join, zip(*[iter(s.upper())]*3))))
+    return ''.join(map(lambda x: codons_nostop.get(x,'X'), map(''.join, zip(*[iter(s.upper())]*3))))
 
 def get_max_fasta_seqlen(fasta_file):
     '''
@@ -805,6 +1060,41 @@ def get_max_fasta_seqlen(fasta_file):
     fasta.close()
     return (ml, seq_ct)
 
+def get_fasta_duplicate_datastruct(fasta_dict):
+    '''
+    Returns a pair of dictionaries. The first is {orig_seq_id: seq_dedup_id} (i.e. equivalence class).
+    The second is {seq_dedup_id: {'seq': seq_string, 'members': [orig_seq_id 1, ...., ], 'copynum': num_dupes}}
+    :param fasta_dict:
+    :return:
+    '''
+    seqs = list(set(fasta_dict.values()))
+    seq_to_index = dict(zip(seqs, list(range(len(seqs)))))
+    eq_classes = dict(zip(list(range(len(seqs))), map(lambda x: {'seq': seqs[x], 'members': [], 'copynum': 0}, range(len(seqs)))))
+    seq_nm_to_class = dict(zip(fasta_dict.keys(), map(lambda x: seq_to_index[fasta_dict[x]], fasta_dict.keys())))
+
+    orig_ct = 0
+    for (k,v) in seq_nm_to_class.items():
+        eq_classes[v]['members'].append(k)
+        eq_classes[v]['copynum']+=1
+        orig_ct += 1
+
+    print("# seqs in original: %s\t\t# seqs deduped: %s" % (orig_ct, len(seqs)))
+    return seq_nm_to_class, eq_classes
+
+def get_fasta_deduped(fasta_dict):
+    '''
+    Just returns the same type of data structure but with no duplicate sequences. Keys assigned
+    to sequences originally containing duplicates is done arbitrarily.
+    :param fasta_dict:
+    :return:
+    '''
+    n2c, eq = get_fasta_duplicate_datastruct(fasta_dict)
+    c2n_dedup = {}
+    for k,v in n2c.items():
+        c2n_dedup[v]=k
+    return dict(map(lambda x: (c2n_dedup[x], eq[x]['seq']), c2n_dedup.keys()))
+
+
 def aligned_protein_to_nucleotides(prot,raw_dna):
     '''
     NOT CURRENTLY IMPLEMENTED
@@ -820,8 +1110,6 @@ def aligned_protein_to_nucleotides(prot,raw_dna):
     # # assert raw_prot==prot_from_dna[0:len(raw_prot)]
     pass
 
-
-
 def get_list_from_file(filepath):
     myf=open(filepath,'r')
     ol=[]
@@ -832,64 +1120,9 @@ def get_list_from_file(filepath):
     myf.close()
     return ol
 
-def make_pbs_file(jobname='nute-job-id',tmstr="04:00:00",queue='secondary',nodes=None,filename="pbs-job-id.pbs",commandfile="",commandlist=None):
-    if nodes==None:
-        if queue=='secondary':
-            nodes=12
-        elif queue=='stat':
-            nodes=16
-        elif queue=='tallis':
-            nodes=20
-    # if not isinstance(tmstr,str) and not isinstance(tmstr,unicode):
-    if not isinstance(tmstr, str):
-        tmstr=hours_to_wallclock_string(tmstr)
-
-    cmdstr='''
-#PBS -l walltime=XXXtimeXXX
-#PBS -l nodes=1:ppn=XXXnodesXXX
-#PBS -N XXXjobnameXXX
-#PBS -q XXXqueueXXX
-##PBS -j oe
-###PBS -o XXXjobnameXXX.out
-###PBS -e XXXjobnameXXX.err
-#PBS -m be
-#PBS -M mike.nute@gmail.com
-#
-#####################################
-
-# Load Modules
-module load java
-module load python/2.7.8
-
-# Change to the directory from which the batch job was submitted
-cd $PBS_O_WORKDIR
-    \n\n'''
-    cmdstr=cmdstr.replace("XXXtimeXXX",str(tmstr))
-    cmdstr=cmdstr.replace("XXXnodesXXX",str(nodes))
-    cmdstr=cmdstr.replace("XXXqueueXXX",queue)
-    cmdstr=cmdstr.replace("XXXjobnameXXX",jobname)
-
-    # print commandfile
-
-    if commandfile=="" or commandfile==None:
-        if commandlist==None:
-            for line in sys.stdin:
-                cmdstr=cmdstr + line
-        else:
-            cmdstr = cmdstr + '\n'.join(commandlist)
-    else:
-        cf = open(commandfile,'r')
-        for i in cf:
-            cmdstr=cmdstr + i
-
-    # cmdstr = cmdstr + commandString
-    pbs=open(filename,'w')
-    pbs.write(cmdstr)
-    pbs.close()
-
-
-
-def write_list_to_file(mylist,filepath):
+def write_list_to_file(mylist=None,filepath=None):
+    if mylist is None or filepath is None:
+        print("usage: write_list_to_file(list,filepath)")
     myf=open(filepath,'w')
     for i in mylist:
         myf.write(str(i) + '\n')
@@ -913,53 +1146,6 @@ def get_two_trees(a,b):
     tr1 = dendropy.Tree.get(path=a,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
     tr2 = dendropy.Tree.get(path=b,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
     return tr1, tr2, tax
-
-def help():
-    print ('''
-    Nute Phylogeny Utilities: Command Line Options:
-
-    -pbs    Makes a pbs file according to the specifications
-            given. Requires the following additional arguments:
-            -jobname    name of the job
-            -walltime   wall clock time for the job (hours)
-            -queue      queue to submit to (default: secondary)
-            -nodes      (default: based on queue)
-                        number of nodes to request
-            -pbsfile    path to the output pbs file
-            -commands   file containing commands (optional,
-                        default will take from stdin)
-    ''')
-
-
-def parse_pbs_args():
-    global jobname, tm
-    jobname = sys.argv[sys.argv.index('-jobname') + 1]
-    tm_ind = sys.argv.index('-walltime') + 1
-    tm = float(sys.argv[tm_ind])
-    timestr=hours_to_wallclock_string(tm)
-    if '-queue' in sys.argv:
-        queue_ind = sys.argv.index('-queue') + 1
-        queue = sys.argv[queue_ind]
-    else:
-        queue = 'secondary'
-    if '-nodes' in sys.argv:
-        nodes_ind = sys.argv.index('-nodes') + 1
-        nodes = sys.argv[nodes_ind]
-    else:
-        nodes = None
-    outfile_ind = sys.argv.index('-pbsfile') + 1
-    outfile = sys.argv[outfile_ind]
-    if '-commands' in sys.argv:
-        cmdfile = sys.argv[sys.argv.index('-commands') + 1]
-    else:
-        cmdfile=None
-    # print 'command file:\t' + cmdfile
-    # print '-commands' in sys.argv
-    # print sys.argv.index('-commands')
-    # print sys.argv[sys.argv.index('-commands') + 1]
-    # print cmdfile
-    return(jobname,timestr,queue,nodes,outfile,cmdfile)
-
 
 def hours_to_wallclock_string(tm):
     import datetime
@@ -1030,14 +1216,15 @@ def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
     write_to_fasta(outfile,f1,newkeys)
 
 def get_dict_from_file(filename, delimiter='\t', keysfirst = True):
-    myf = open(filename,'r')
-    args = {}
-    for i in myf:
-        if len(i.strip())>0:
-            a=i.strip().split(delimiter)
-            args[a[0]]=a[1]
-    myf.close()
-    return args
+    return get_dict_from_file_fast(filename, delimiter, keysfirst)
+    # myf = open(filename,'r')
+    # args = {}
+    # for i in myf:
+    #     if len(i.strip())>0:
+    #         a=i.strip().split(delimiter)
+    #         args[a[0]]=a[1]
+    # myf.close()
+    # return args
 
 def get_dict_from_file_fast(filename, delimiter='\t', keysfirst = True):
     myf = open(filename,'r')
@@ -1072,6 +1259,42 @@ def get_dict_from_tab_delimited_file(filename, keysfirst = True):
                     print('%s lines done' % ct)
     myf.close()
     return args
+
+def int_vs_node_brlens(fp):
+    '''
+    Takes a file path containing a newick tree and prints the Counts and, Average,
+    Standard Deviation and C.V. of branch lengths for the internal and leaf
+    branches separately.
+    :param fp:      (string) path to file containing newick tree
+    :return:        None
+    '''
+    tr = dendropy.Tree.get(path=fp,schema='newick',preserve_underscores=True)
+    totlen=0
+    totlen2=0
+    ct=0
+    for nd in tr.preorder_internal_node_iter():
+        if nd.edge_length is not None:
+            totlen2+=nd.edge_length**2
+            totlen+=nd.edge_length
+            ct+=1
+    totlen_lf2=0
+    totlen_lf=0
+    ct_lf=0
+    for nd in tr.leaf_node_iter():
+        totlen_lf2+=nd.edge_length**2
+        totlen_lf+=nd.edge_length
+        ct_lf+=1
+    int_avg = totlen / ct
+    int_sd = (totlen2 / ct - (int_avg)**2)**0.5
+    int_cv = int_avg / int_sd
+    lf_avg = totlen_lf / ct_lf
+    lf_sd = (totlen_lf2 / ct_lf - (lf_avg)**2)**0.5
+    lf_cv = lf_avg / lf_sd
+    print("                Ct           \tAvg Len      \tSD Len       \tCoef Var      ")
+    print("Internal Nodes  %s         \t%.5f  \t%.5f  \t%.5f" % (ct, int_avg, int_sd, int_cv))
+    print("Leaf Nodes      %s         \t%.5f  \t%.5f  \t%.5f" % (ct_lf, lf_avg, lf_sd, lf_cv))
+
+
 
 if __name__=='__main__':
     if '-h' in sys.argv:
