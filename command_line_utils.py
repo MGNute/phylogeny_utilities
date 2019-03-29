@@ -35,50 +35,7 @@ def remove_all_blank_columns(fasta_dict,same_length_check=True):
         in fasta_dict are not the same length.
     :return: fasta_dict: dictionary with columns removed.
     """
-    seqs_list = list(fasta_dict.values())
-    num_seqs=len(seqs_list)
-    seq_len = len(seqs_list[0])
-
-    # check that all the sequences are the same length
-    if same_length_check==True:
-        for i in fasta_dict.values():
-            if len(i) != seq_len:
-                print ('The sequences were not all the same length.')
-                return fasta_dict, -1
-
-    # identify columns that are blank for every taxon
-    all_blanks_list = []
-    for i in range(seq_len):
-        allblank=True
-        for j in fasta_dict.values():
-            if j[i]!='-':
-                allblank=False
-                break
-        if allblank==True:
-            all_blanks_list.append(i)
-
-    newfasta={}
-    for i in fasta_dict.keys():
-        newfasta[i]=''
-
-    non_blanks=list(set(range(seq_len)).difference(set(all_blanks_list)))
-    # remove those columns (in place, so do it in reverse order)
-    if len(all_blanks_list)>0:
-        # all_blanks_list.sort(reverse=True)
-        non_blanks.sort()
-
-        for i in fasta_dict.keys():
-            old=fasta_dict[i]
-            new=''
-            for j in non_blanks:
-                new = new + old[j]
-            newfasta[i]=new
-    else:
-        for i in fasta_dict.keys():
-            newfasta[i]=fasta_dict[i]
-
-    # return newfasta, all_blanks_list
-    return newfasta
+    return remove_all_blank_columns_utils(fasta_dict, same_length_check)
 
 def rename_fasta_by_name_map(inalign,outalign,namemap,keysfirst = True):
     nm = get_dict_from_tab_delimited_file(namemap,keysfirst)
@@ -120,10 +77,18 @@ def shrink_one_fasta_to_match_another(big_fasta_path, smaller_fasta_path, out_pa
     for i in new_keys:
         out_dict[i]=big[i]
 
-    out_dict, all_blanks_list = remove_all_blank_columns(out_dict)
+    out_dict = remove_all_blank_columns(out_dict)
     write_to_fasta(out_path,out_dict)
 
 def split_fasta_into_parts(in_path, num_parts, out_folder = None):
+    '''
+    Not the most efficient way to do this for a very large fastq, but
+    does the job for now.
+    :param in_path:
+    :param num_parts:
+    :param out_folder:
+    :return:
+    '''
     import math, os
     fa = read_from_fasta(in_path)
 
@@ -133,11 +98,13 @@ def split_fasta_into_parts(in_path, num_parts, out_folder = None):
         fo, fi = os.path.split(in_path)
         path_template = os.path.join(out_folder,fi) + '.part%s'
 
-    cuts = [i*len(fa)/num_parts for i in range(num_parts+1)]
+    cuts = [int(i*len(fa)/num_parts) for i in range(num_parts+1)]
+    print(cuts)
+
     for i in range(num_parts):
         c1 = cuts[i]
         c2 = cuts[i+1]
-        fanew = dict(fa.items()[c1:c2])
+        fanew = dict(list(fa.items())[c1:c2])
         new_path = path_template % i
         write_to_fasta(new_path,fanew)
         print ('wrote file: %s' % new_path)
