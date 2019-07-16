@@ -1060,7 +1060,7 @@ def get_max_fasta_seqlen(fasta_file):
     fasta.close()
     return (ml, seq_ct)
 
-def get_fasta_duplicate_datastruct(fasta_dict):
+def get_fasta_duplicate_datastruct(fasta_dict, quiet=False):
     '''
     Returns a pair of dictionaries. The first is {orig_seq_id: seq_dedup_id} (i.e. equivalence class).
     The second is {seq_dedup_id: {'seq': seq_string, 'members': [orig_seq_id 1, ...., ], 'copynum': num_dupes}}
@@ -1078,7 +1078,12 @@ def get_fasta_duplicate_datastruct(fasta_dict):
         eq_classes[v]['copynum']+=1
         orig_ct += 1
 
-    print("# seqs in original: %s\t\t# seqs deduped: %s" % (orig_ct, len(seqs)))
+    singleton_ct = sum(map(lambda x: 1 if x['copynum']<=1 else 0, eq_classes.values()))
+
+    if not quiet:
+        print("# seqs in original: %d" % orig_ct)
+        print('# seqs deduped:     %d' % len(seqs))
+        print('# singletons:       %d' % singleton_ct)
     return seq_nm_to_class, eq_classes
 
 def get_fasta_deduped(fasta_dict):
@@ -1093,22 +1098,6 @@ def get_fasta_deduped(fasta_dict):
     for k,v in n2c.items():
         c2n_dedup[v]=k
     return dict(map(lambda x: (c2n_dedup[x], eq[x]['seq']), c2n_dedup.keys()))
-
-
-def aligned_protein_to_nucleotides(prot,raw_dna):
-    '''
-    NOT CURRENTLY IMPLEMENTED
-    :param prot:
-    :param raw_dna:
-    :return:
-    '''
-    # #first check that they are the same:
-    # raw_prot=prot.replace('-','')
-    # prot_from_dna=dna_to_protein(raw_dna)
-    # prot_from_dna_minus_stop=prot_from_dna.replace('(stop)','')
-    # assert raw_prot==prot_from_dna_minus_stop, "Protein and DNA sequence do not match"
-    # # assert raw_prot==prot_from_dna[0:len(raw_prot)]
-    pass
 
 def get_list_from_file(filepath):
     myf=open(filepath,'r')
@@ -1146,6 +1135,10 @@ def get_two_trees(a,b):
     tr1 = dendropy.Tree.get(path=a,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
     tr2 = dendropy.Tree.get(path=b,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
     return tr1, tr2, tax
+
+# formats a byte as 8-digit binary from a bytearray. Index assumed to be 0 unless specified.
+bin8 = lambda x: ''.join(['0',]*(8-(len(format(x,'b'))%8) ))+format(x,'b')
+
 
 def hours_to_wallclock_string(tm):
     import datetime
