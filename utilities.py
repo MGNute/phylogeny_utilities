@@ -2,16 +2,16 @@
 import re, platform, time, os, sys, json
 import numpy as np
 import multiprocessing
-import matplotlib
-if platform.system()=='Linux':
-    matplotlib.use('Agg')
-import matplotlib.pyplot as plt
+# import matplotlib
+# if platform.system()=='Linux':
+#     matplotlib.use('Agg')
+# import matplotlib.pyplot as plt
 import dendropy
 # import phylogeny_utilities.common_vars as cv
-try:
-    import common_vars as cv
-except:
-    import phylogeny_utilities.common_vars as cv
+# try:
+#     import common_vars as cv
+# except:
+#     import phylogeny_utilities.common_vars as cv
 from Bio import SeqIO
 
 cog_lookup = {'COG0012':'Ribosome-binding ATPase YchF, GTP1/OBG family',
@@ -99,9 +99,45 @@ def read_from_fastq(file_path):
             minlen = min(minlen,dim)
             maxlen = max(maxlen,dim)
             nm=''
+        ct += 1
     fi.close()
     print('max length: %s\tmin length: %s' % (maxlen,minlen))
     return fasta, quals
+
+def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, quiet=False):
+    seq_qual_keys = set(fastadict.keys()).intersection(set(qualsdict.keys()))
+    nfa = len(fastadict)
+    nqu = len(qualsdict)
+    nfaqu = len(seq_qual_keys)
+    if not quiet:
+        print('# keys in... (fasta: %d), (quals: %d), (in common: %d)' % (nfa, nqu, nfaqu))
+
+    if subset_keys is None:
+        subset_keys_int = seq_qual_keys
+        print('writing %d keys to file...' % nfaqu)
+    else:
+        nssk = len(subset_keys)
+        subset_keys_int = seq_qual_keys.intersection(set(subset_keys))
+        nsski = len(subset_keys_int)
+        print('# subset keys in... (input: %d), (fasta/quals: %d), (in common: %d)' % (nssk, nfaqu, nsski))
+        print('writing %d keys to file...' % nsski)
+
+    fout = open(file_path, 'w')
+    lct = 0
+
+    for k in subset_keys_int:
+        ct = fout.write('@%s\n%s\n+\n%s\n' % (k, fastadict[k], (qualsdict[k]+33).tobytes().decode('utf-8')) )
+        lct += 1
+        if lct % 100000 == 0:
+            print('\rseqs done: %d' % lct, end = '')
+    print('')
+    fout.close()
+
+
+
+
+
+
 def delete_taxa_and_remove_all_blank_columns_np(fasta_dict, subset_keys=None):
     '''
 
@@ -456,6 +492,8 @@ def get_avg_pdistance_of_nparray(fnp, getmax=False, weighted=False):
     for i in range(fnp.shape[0]):
         for j in range(i):
             comm = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45),dtype=np.float64)
+            if comm ==0:
+                continue
             same = np.sum((fnp[i,:]!=45) & (fnp[j,:]!=45) & (fnp[i,:]==fnp[j,:]),dtype=np.float64)
             run_tot+= 1.- same / comm
             run_ct += 1
@@ -469,10 +507,10 @@ def get_avg_pdistance_of_nparray(fnp, getmax=False, weighted=False):
     if getmax==False:
         if weighted:
             pd = 1.0 - same_sum / comm_sum
-            return pd, same_sum, comm_sum, run_ct
+            return pd, int(same_sum), int(comm_sum), run_ct
         else:
             pd = run_tot / float(run_ct)
-            return pd, same_sum, comm_sum, run_ct
+            return pd, int(same_sum), int(comm_sum), run_ct
     else:
         return maxpd
 
@@ -482,6 +520,16 @@ def compute_p_dist(np_seq1, np_seq2):
     return (1-same/comm, int(comm), int(same))
 
 def fasta_dict_to_nparray(fasta, taxnames=None, order='C'):
+    '''
+    Converts a dictionary representing an *aligned* fasta file (keys = seq names, values = seqs),
+    into a numpy array of type np.uint8. Returns (taxa_names, array) where taxa_names is a list
+    of names, in order, represented by the rows of the array. Should match the order of fasta.keys,
+    but just in case...
+    :param fasta:
+    :param taxnames:
+    :param order:
+    :return:
+    '''
     ntax = len(fasta.keys())
     ncols = max(map(len,fasta.values()))
     nparr = np.zeros((ntax,ncols),dtype=np.uint8,order=order)
@@ -510,15 +558,49 @@ def fasta_dict_to_nparray(fasta, taxnames=None, order='C'):
     else:
         return taxnames, nparr
 
+def get_fasta_nparray_sp_score(fa_arr, return_col_sps = False):
+    '''
+    Computes the sum-of-pairs score for a particular alignment. I.e. the number of pair-wise matching
+    characters in an alignment.
+    :param fa_arr:
+    :return:
+    '''
+    from collections import Counter
+    nseqs = fa_arr.shape[0]
+    slen = fa_arr.shape[1]
+    nc2 = lambda x: int(x*(x-1)/2)
+    nc2_sum = lambda x: sum(map(nc2, x))
+
+    sp_score = 0
+    col_sps = []
+    for c in range(slen):
+        col_ctr = Counter(nparr2str(fa_arr[:,c]).replace('-',''))
+        col_sps.append(nc2_sum(col_ctr.values()))
+    sp_score = sum(col_sps)
+    if not return_col_sps:
+        return sp_score
+    else:
+        return sp_score, col_sps
+
+
+
+
 
 def nparr2str(nparr):
+    '''
+    Converts a 1-d numpy array to a python string using utf-8 encoding. Ideally used on an
+    array of type uint8
+    :param nparr:
+    :return:
+    '''
     return nparr[:].tobytes().decode('utf-8')
-    # if len(nparr.shape)>1:
-    #     return nparr[row,:].tobytes().decode('utf-8')
-    # else:
-
 
 def str2nparr(seq):
+    '''
+    Converts a python string to a 1d numpy array of type numpy.uint8.
+    :param seq:
+    :return:
+    '''
     return np.frombuffer(bytes(seq, 'utf8'), dtype=np.uint8)
 
 def pdist(s1, s2, all=False):
@@ -633,6 +715,16 @@ def sepp_json_to_tsv(in_path, out_path):
     outf.close()
 
 def make_histogram_of_branch_lengths(tree_file, out_path):
+    '''
+    Makes a histogram of branch lengths over a tree.
+    :param tree_file: Path to newick file representing a Tree.
+    :param out_path: path to write PDF to. If this does not end with '.pdf', that extension is added.
+    :return:
+    '''
+    import matplotlib
+    if platform.system() == 'Linux':
+        matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
     tr=dendropy.Tree.get(path=tree_file,schema='newick')
     internals = [i.length for i in tr.postorder_internal_edge_iter(filter_fn=lambda x: x.length is not None)]
     leaves = [i.length for i in tr.leaf_edge_iter(filter_fn=lambda x: x.length is not None)]
@@ -657,6 +749,10 @@ def make_histogram_of_sequence_lengths(fasta_file,out_figure_path,subtitle=None)
     :param out_figure_path:
     :return:
     '''
+    import matplotlib
+    if platform.system() == 'Linux':
+        matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
 
     a = read_from_fasta(fasta_file)
     lsnp = np.array(list(map(len,a.values())))
@@ -675,32 +771,6 @@ def make_histogram_of_sequence_lengths(fasta_file,out_figure_path,subtitle=None)
         plt.title(subtitle)
     plt.savefig(out_figure_path)
     plt.clf()
-
-def get_nx2_nparray_diffs(arr1,arr2):
-    '''
-    Honestly I'm not sure what this function does or was used for.
-    :param arr1:
-    :param arr2:
-    :return:
-    '''
-    l1=[]
-    for i in range(arr1.shape[0]):
-        l1.append(str(np.getbuffer(arr1[i,:].ravel())))
-
-    l2 = []
-    for i in range(arr2.shape[0]):
-        l2.append(str(np.getbuffer(arr2[i,:].ravel())))
-
-    if len(l1)>len(l2):
-        l3 = list(set(l1).difference(set(l2)))
-    else:
-        l3 = list(set(l2).difference(set(l1)))
-
-    h = len(l3)
-    res = np.zeros((h,2),arr1.dtype)
-    for i in range(h):
-        res[i,:]=np.frombuffer(l3[i],dtype=arr1.dtype)
-    return res
 
 def make_fasta_with_clean_names(fastadict,outfasta,outnames):
     '''
@@ -754,29 +824,7 @@ def seq_length_data_for_histogram(a):
     :param a:
     :return:
     '''
-    L=[]
-    for i in a.values():
-        L.append(len(i))
-
-    return L
-
-def hist_of_seqs_by_name(seqs,i,fasta_dict):
-    '''
-    Not sure what this is for...
-    :param seqs:
-    :param i:
-    :param fasta_dict:
-    :return:
-    '''
-    allkeys=[k for k in fasta_dict.keys() if k[0:10]==seqs[i]]
-    hist={}
-    for i in allkeys:
-        l=len(fasta_dict[i])
-        try:
-            hist[l]+=1
-        except:
-            hist[l]=1
-    return hist
+    return list(map(len, a.values()))
 
 def bp_genbank_to_fasta(gbk_in):
     fasta_out = gbk_in[:-4] + '.fna'
@@ -1004,12 +1052,24 @@ def write_results_lines_to_file(args_list,out_file):
     outf.close()
 
 def open_json(fn):
+    '''
+    Wraps json.load(). I.e., opens a json file, converts it to the equivalent python object using json.load(), then
+    closes the file.
+    :param fn:
+    :return:
+    '''
     t=open(fn,'r')
     fs=json.load(t)
     t.close()
     return fs
 
 def dna_to_protein(dna,verbose=False):
+    '''
+    Alias for dna_to_protein_fast...
+    :param dna:
+    :param verbose:
+    :return:
+    '''
     # cv.codon lookup table transcribed from wikipedia
     # cv.codon_lookup = {'GCT':'A','GCC':'A','GCA':'A','GCG':'A','CGT':'R','CGC':'R','CGA':'R','CGG':'R',
     #                 'AGA':'R','AGG':'R','AAT':'N','AAC':'N','GAT':'D','GAC':'D','TGT':'C','TGC':'C',
@@ -1024,14 +1084,19 @@ def dna_to_protein(dna,verbose=False):
     # extras = len(dna)-k*3
     # if extras>0 and verbose:
     #     print ("The sequence given is not divisible by 3, there are %i extra nucleotides, which will be ignored" % extras)
-    str_protein = ''
-    for i in range(k):
-        codon = dna[(i*3):(i*3+3)].upper()
-        str_protein = str_protein + codons_nostop[codon]
+    str_protein = dna_to_protein_fast(dna)
+    # for i in range(k):
+    #     codon = dna[(i*3):(i*3+3)].upper()
+    #     str_protein = str_protein + codons_nostop[codon]
     # str_protein = str_protein.replace('(stop)','')
     return str_protein
 
 def dna_to_protein_fast(s):
+    '''
+    Converts a DNA string to a protein string using the codon table from Wikipedia (as of 2017).
+    :param s:
+    :return:
+    '''
     return ''.join(map(lambda x: codons_nostop.get(x,'X'), map(''.join, zip(*[iter(s.upper())]*3))))
 
 def get_max_fasta_seqlen(fasta_file):
@@ -1100,16 +1165,27 @@ def get_fasta_deduped(fasta_dict):
     return dict(map(lambda x: (c2n_dedup[x], eq[x]['seq']), c2n_dedup.keys()))
 
 def get_list_from_file(filepath):
+    '''
+    Converts a text file to a python list of strings, with each line becoming one item
+    in the list.
+    :param filepath:
+    :return:
+    '''
     myf=open(filepath,'r')
     ol=[]
     for i in myf:
         if i.strip()!='':
             ol.append(i.strip())
-
     myf.close()
     return ol
 
 def write_list_to_file(mylist=None,filepath=None):
+    '''
+    Writes a list object to a file, one item per line.
+    :param mylist: python list object
+    :param filepath: file path for output
+    :return:
+    '''
     if mylist is None or filepath is None:
         print("usage: write_list_to_file(list,filepath)")
     myf=open(filepath,'w')
@@ -1118,6 +1194,14 @@ def write_list_to_file(mylist=None,filepath=None):
     myf.close()
 
 def write_dict_to_file(mydict, filepath, delimiter='\t'):
+    '''
+    Takes a dictionary object and writes it to a file with each entry one on line, in string form,
+    separated by a delimiter.
+    :param mydict:
+    :param filepath:
+    :param delimiter:
+    :return:
+    '''
     # if delimiter is None:
     #     delimiter = '\t'
     myf = open(filepath,'w')
@@ -1129,27 +1213,22 @@ def write_dict_to_file(mydict, filepath, delimiter='\t'):
         myf.write("\n")
     myf.close()
 
-def get_two_trees(a,b):
-    tax = dendropy.TaxonNamespace()
-
-    tr1 = dendropy.Tree.get(path=a,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
-    tr2 = dendropy.Tree.get(path=b,schema='newick',rooting="force-unrooted",preserve_underscores=True,taxon_namespace=tax)
-    return tr1, tr2, tax
-
 # formats a byte as 8-digit binary from a bytearray. Index assumed to be 0 unless specified.
 bin8 = lambda x: ''.join(['0',]*(8-(len(format(x,'b'))%8) ))+format(x,'b')
 
-
-def hours_to_wallclock_string(tm):
-    import datetime
-    h = int(tm)
-    mf = 60 * (tm - h)
-    m = int(mf)
-    s = int(60 * (mf - m))
-    timestr = str(h) + ":" + datetime.time(h, m, s).strftime('%M:%S')
-    return timestr
+def get_file_md5_digest(file_path):
+    import hashlib
+    with open(file_path,'rb') as fb:
+        hd=hashlib.md5(fb.read()).hexdigest()
+    return hd
 
 def alignment_stats_dir_to_tabd(aln_dir,outpath):
+    '''
+    Takes a directory full of alignment_stats files and converts it to a tab-delimited text spreadsheet
+    :param aln_dir:
+    :param outpath:
+    :return:
+    '''
     myf=open(outpath,'w')
     myf.write('File\tALIGNMENT_PERCENT_BLANKS_MARKER\tALIGNMENT_BLANKS_COUNT\tALIGNMENT_GAPS_COUNT\tALIGNMENT_ROWS_COUNT\tALIGNMENT_COLUMNS_COUNT\tALIGNMENT_AVERAGE_GAPS_PER_SEQUENCE\tALIGNMENT_AVERAGE_GAP_LENGTH\tALIGNMENT_STDDEV_GAP_LENGTH\tALIGNMENT_MEDIAN_GAP_LENGTH\tALIGNMENT_MNHD\tALIGNMENT_ANHD\n')
 
@@ -1208,16 +1287,25 @@ def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
     newkeys=list(set(f1.keys()).difference(set(f2.keys())))
     write_to_fasta(outfile,f1,newkeys)
 
-def get_dict_from_file(filename, delimiter='\t', keysfirst = True):
-    return get_dict_from_file_fast(filename, delimiter, keysfirst)
-    # myf = open(filename,'r')
-    # args = {}
-    # for i in myf:
-    #     if len(i.strip())>0:
-    #         a=i.strip().split(delimiter)
-    #         args[a[0]]=a[1]
-    # myf.close()
-    # return args
+def get_dict_from_general_delimited_file(filename, key_col=0, val_col=1, delimiter='\t', header_rows=0):
+    myf = open(filename, 'r')
+    for r in range(header_rows):
+        foo = myf.readline()
+    args={}
+    ct = 0
+    for ln in myf:
+        if len(ln.strip()) > 0:
+            a = ln.strip().split(delimiter)
+            args[a[key_col]] = a[val_col]
+            ct += 1
+            if ct % 100000 == 0:
+                print('\r',end=''); print('%9d lines done' % ct, end = '')
+    print('\n')
+    myf.close()
+    return args
+
+    # args = dict(map(lambda x: (x[key_col], x[val_col]),
+    #                     [ln.strip().split(delimiter) for ln in myf if len(ln.strip()) > 0]))
 
 def get_dict_from_file_fast(filename, delimiter='\t', keysfirst = True):
     myf = open(filename,'r')
@@ -1232,6 +1320,8 @@ def get_dict_from_file_fast(filename, delimiter='\t', keysfirst = True):
     #         args[a[0]]=a[1]
     myf.close()
     return args
+
+
 
 def get_dict_from_tab_delimited_file(filename, keysfirst = True):
     myf = open(filename,'r')
