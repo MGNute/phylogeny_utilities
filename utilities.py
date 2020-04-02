@@ -1,4 +1,3 @@
-    # from phylogeny_utilities.command_line_utils import *
 import re, platform, time, os, sys, json
 import numpy as np
 import multiprocessing
@@ -7,11 +6,6 @@ import multiprocessing
 #     matplotlib.use('Agg')
 # import matplotlib.pyplot as plt
 import dendropy
-# import phylogeny_utilities.common_vars as cv
-# try:
-#     import common_vars as cv
-# except:
-#     import phylogeny_utilities.common_vars as cv
 from Bio import SeqIO
 
 cog_lookup = {'COG0012':'Ribosome-binding ATPase YchF, GTP1/OBG family',
@@ -105,6 +99,17 @@ def read_from_fastq(file_path):
     return fasta, quals
 
 def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, quiet=False):
+    '''
+    Takes a fasta dict and a qual-scores dict (e.g. from the read_from_fastq function), along
+    with a subset of the keys in there. It then writes a new fastq file with only the sequences
+    in the subset.
+    :param file_path:
+    :param fastadict:
+    :param qualsdict:
+    :param subset_keys:
+    :param quiet:
+    :return:
+    '''
     seq_qual_keys = set(fastadict.keys()).intersection(set(qualsdict.keys()))
     nfa = len(fastadict)
     nqu = len(qualsdict)
@@ -117,7 +122,8 @@ def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, qui
         print('writing %d keys to file...' % nfaqu)
     else:
         nssk = len(subset_keys)
-        subset_keys_int = seq_qual_keys.intersection(set(subset_keys))
+        # subset_keys_int = seq_qual_keys.intersection(set(subset_keys))
+        subset_keys_int = list(filter(lambda x: x in seq_qual_keys, subset_keys))
         nsski = len(subset_keys_int)
         print('# subset keys in... (input: %d), (fasta/quals: %d), (in common: %d)' % (nssk, nfaqu, nsski))
         print('writing %d keys to file...' % nsski)
@@ -128,7 +134,7 @@ def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, qui
     for k in subset_keys_int:
         ct = fout.write('@%s\n%s\n+\n%s\n' % (k, fastadict[k], (qualsdict[k]+33).tobytes().decode('utf-8')) )
         lct += 1
-        if lct % 100000 == 0:
+        if lct % 10000 == 0:
             print('\rseqs done: %d' % lct, end = '')
     print('')
     fout.close()
