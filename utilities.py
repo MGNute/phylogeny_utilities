@@ -1,4 +1,4 @@
-import re, platform, time, os, sys, json
+import re, platform, time, os, sys, json, datetime
 import numpy as np
 import multiprocessing
 # import matplotlib
@@ -118,24 +118,29 @@ def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, qui
         print('# keys in... (fasta: %d), (quals: %d), (in common: %d)' % (nfa, nqu, nfaqu))
 
     if subset_keys is None:
-        subset_keys_int = seq_qual_keys
+        subset_keys = seq_qual_keys
         print('writing %d keys to file...' % nfaqu)
     else:
         nssk = len(subset_keys)
-        # subset_keys_int = seq_qual_keys.intersection(set(subset_keys))
-        subset_keys_int = list(filter(lambda x: x in seq_qual_keys, subset_keys))
-        nsski = len(subset_keys_int)
+        nsski = nssk
+        subset_keys_int_ct = len(seq_qual_keys.intersection(set(subset_keys)))
+        if nssk != subset_keys_int_ct:
+            subset_keys = list(filter(lambda x: x in seq_qual_keys, subset_keys))
+            nsski = len(subset_keys)
         print('# subset keys in... (input: %d), (fasta/quals: %d), (in common: %d)' % (nssk, nfaqu, nsski))
         print('writing %d keys to file...' % nsski)
 
     fout = open(file_path, 'w')
     lct = 0
-
-    for k in subset_keys_int:
+    st = datetime.datetime.now()
+    lasttm = datetime.datetime.now()
+    for k in subset_keys:
         ct = fout.write('@%s\n%s\n+\n%s\n' % (k, fastadict[k], (qualsdict[k]+33).tobytes().decode('utf-8')) )
         lct += 1
         if lct % 10000 == 0:
-            print('\rseqs done: %d' % lct, end = '')
+            currtm = datetime.datetime.now()
+            print('\rseqs done: %7d   time_diff = %s,  time_cume = %s' % (lct, (currtm-lasttm), (currtm - st)), end = '')
+            lasttm = datetime.datetime.now()
     print('')
     fout.close()
 
@@ -462,6 +467,11 @@ def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
     f = read_from_fasta(fasta_path)
     taxn, fnp = fasta_dict_to_nparray(f)
     return get_avg_pdistance_of_nparray(fnp, getmax)
+
+def get_seq_len_deciles(fa):
+    '''takes a fasta dictionary object and returns a numpy array with the length deciles'''
+    falens = np.array(list(map(len, fa.values())),dtype=np.int32)
+    return np.quantile(falens, 0.1*np.arange(11))
 
 def get_avg_pdistance_of_list(seq_list, getmax=False):
     '''
@@ -1203,10 +1213,10 @@ def write_dict_to_file(mydict, filepath, delimiter='\t'):
     '''
     Takes a dictionary object and writes it to a file with each entry one on line, in string form,
     separated by a delimiter.
-    :param mydict:
-    :param filepath:
-    :param delimiter:
-    :return:
+    :param mydict: a dictionary object where both keys and values can be readily converted to srings
+    :param filepath: path to the output text file
+    :param delimiter: (self-explanatory, default is '\t')
+    :return: None
     '''
     # if delimiter is None:
     #     delimiter = '\t'
@@ -1294,6 +1304,17 @@ def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
     write_to_fasta(outfile,f1,newkeys)
 
 def get_dict_from_general_delimited_file(filename, key_col=0, val_col=1, delimiter='\t', header_rows=0):
+    '''
+    General file to pull a dictionary object from a delimited text file. Default is to assume two columns,
+    tab-delimited with keys in the first column and values in the second, with no header. But any column
+    indices, delimiter and number of header rows can be specified.
+    :param filename: path to the target file
+    :param key_col: column index (0-indexed) to get the keys from
+    :param val_col: column index (0-indexed) to get the values from
+    :param delimiter: delimiter to split the columns by (no text qualifier, sorry)
+    :param header_rows: number of rows at the start of the file to skip
+    :return:
+    '''
     myf = open(filename, 'r')
     for r in range(header_rows):
         foo = myf.readline()
@@ -1305,7 +1326,7 @@ def get_dict_from_general_delimited_file(filename, key_col=0, val_col=1, delimit
             args[a[key_col]] = a[val_col]
             ct += 1
             if ct % 100000 == 0:
-                print('\r',end=''); print('%9d lines done' % ct, end = '')
+                print('\r',end=''); print('%15s lines done' % f'{ct:,d}', end = '')
     print('\n')
     myf.close()
     return args
