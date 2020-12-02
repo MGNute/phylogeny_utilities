@@ -67,9 +67,9 @@ def read_from_fasta(file_path):
 def read_from_fastq(file_path):
     '''
     Basic FASTQ parser. Returns two dictionary objects. The first is a fasta-dict
-    in the form {'<sequence_name>': <sequence String>}. The second has the quality
-    scores in the form of a numpy array with data type np.uint8. The quality scores
-    have had the bias subtracted (in this case 33).
+    in the form {'<sequence_name>': <sequence String>}. The second has as values
+    the quality scores in the form of a numpy array with data type np.uint8. The
+    quality scores have had the bias subtracted (in this case 33).
     :param file_path:
     :return:
     '''
@@ -144,16 +144,13 @@ def write_to_fastq_subset(file_path, fastadict, qualsdict, subset_keys=None, qui
     print('')
     fout.close()
 
-
-
-
-
-
 def delete_taxa_and_remove_all_blank_columns_np(fasta_dict, subset_keys=None):
     '''
-
-    :param fasta_dict:
-    :return:
+    Takes a fasta-dictionary of a set of aligned sequences and returns a fasta-numpy-array
+    with any all-blank columns removed. NOTE: this function calls 'fasta_dict_to_nparray' and
+    returns the same form of output as that function.
+    :param fasta_dict: fasta-dictionary with *aligned* sequencs (i.e., all the same length)
+    :return: sequence_names (list), sequences (np.uint8 array)
     '''
     tax, fanp = fasta_dict_to_nparray(fasta_dict)
     if subset_keys is not None:  # delete some taxa...
@@ -172,10 +169,9 @@ def delete_taxa_and_remove_all_blank_columns_np(fasta_dict, subset_keys=None):
     return tax,fanp
 
 
-
 def remove_all_blank_columns_utils(fasta_dict,same_length_check=True):
     """
-    Takes a dictionary representing a fasta file and removes any columns that are blank for all taxa. Data are
+    Takes a fasta-dictionary and removes any columns that are blank for all taxa. Data are
     assumed to be aligned starting with the first column in each string.
 
     NOTE: the operations in this function are in-place on the object provided by pythons nature, so while it
@@ -233,6 +229,10 @@ def remove_all_blank_columns_utils(fasta_dict,same_length_check=True):
     return newfasta
 
 def read_fastq_to_qs_histogram(filepath, num_cols, num_rows):
+    '''
+    Reads a fastq and produces a histogram of quality-scores (I think). (NOTE: I'm not positive
+    that this function has been completely written. Better documentation is needed.)
+    '''
     fastq = open(filepath,'r')
     qs = np.zeros((num_rows,num_cols),dtype=np.uint8)
 
@@ -255,6 +255,9 @@ def read_fastq_to_qs_histogram(filepath, num_cols, num_rows):
     return qs
 
 def get_boxplot_stats(uqs):
+    '''
+    TODO: document this function.
+    '''
     ncols = uqs.shape[1]
     nrows = uqs.shape[0]
 
@@ -267,9 +270,8 @@ def get_boxplot_stats(uqs):
 
     return out
 
-
-
 def list_from_stdin():
+    '''Takes a list of line-separated values from stdin and returns a python list.'''
     l = []
     while True:
         a=input()
@@ -346,6 +348,10 @@ def write_to_fasta(out_file_path,fasta_dict,subset_keys=None,raw=False,quiet=Fal
 
 
 def read_from_aligned_phylip(file_path,as_nparray=False):
+    '''
+    Similar to read_from_fasta, but operates on the aligned phylip format. If 'as_nparray' is True, returns
+    output in the format of Name_List, Sequence_Numpy_Array.
+    '''
     f=open(file_path,'r')
     sz_ln = f.readline().strip().split(' ')
 
@@ -389,18 +395,18 @@ def read_from_aligned_phylip(file_path,as_nparray=False):
 
 def get_fastadict_reverse_complement(fd):
     '''
-    returns a fasta dictionary where every sequence is the reverse complement of the original.
-    :param fd:
-    :return:
+    Takes a fasta-dictionary as input, returns a fasta dictionary where every
+    sequence is the reverse complement of the original.
     '''
-    from Bio.Seq import Seq
-    from Bio.Alphabet import generic_dna
     fdrc = {}
-    for i in fd.keys():
-        fdrc[i] = str(Seq(fd[i],generic_dna).reverse_complement())
+    for i, s in fd.items():
+        fdrc[i] = reverse_complement(s)
     return fdrc
 
 def reverse_complement(seq):
+    '''
+    Takes a sequence string as input, returns the reverse complement.
+    '''
     lkp = {'G':'C', 'g':'c', 'C':'G', 'c':'g', 'A':'T', 'a':'t', 'T':'A', 't':'a'}
     keys = set(list('GCATgcat'))
     a=''.join(map(lambda x: lkp[x] if x in keys else x, seq))
@@ -432,7 +438,7 @@ def mask_fastadict(fasta, min_pct_nongap = 0.1):
 
 def get_consensus_sequence(fasta, single_arb=True):
     '''
-    Returns the consensus sequence from a multiple sequence alignment. If some oclumns have ties, reutnrs an
+    Returns the consensus sequence from a multiple sequence alignment. If some columns have ties, returns an
     arbitrary one if single_arb is True, and a list of all possibles if it is false. fasta can either be
     a list of aligned sequences or a fasta dict.
     :param fasta:
@@ -464,6 +470,7 @@ def get_consensus_sequence(fasta, single_arb=True):
 
 
 def get_avg_pdistance_of_fasta(fasta_path, getmax=False):
+    '''Takes a path to a fasta file as input, returns the average p-distance of the sequences.'''
     f = read_from_fasta(fasta_path)
     taxn, fnp = fasta_dict_to_nparray(f)
     return get_avg_pdistance_of_nparray(fnp, getmax)
@@ -475,10 +482,8 @@ def get_seq_len_deciles(fa):
 
 def get_avg_pdistance_of_list(seq_list, getmax=False):
     '''
-    NOTE: all seqs in list must have the same length. If not, an error will arise.
-    :param seq_list:
-    :param getmax:
-    :return:
+    Self-explanatory. Takes a list of sequences as input.
+    NOTE: all seqs in list must have the same length. If not, an error will arise.a
     '''
     all_lens=list(set(map(len, seq_list)))
     assert (len(all_lens)==1), "sequences in seq_list are not all the same. some lengths are: %s" % all_lens[:min(5,len(all_lens))]
@@ -531,6 +536,8 @@ def get_avg_pdistance_of_nparray(fnp, getmax=False, weighted=False):
         return maxpd
 
 def compute_p_dist(np_seq1, np_seq2):
+    '''Takes two sequences in the form of numpy arrays (np.uint8). Returns the p-distance between the two,
+    computed over only common non-blank sites.'''
     comm = np.sum((np_seq1 != 45) & (np_seq2 != 45),dtype=np.float64)
     same = np.sum((np_seq1 != 45) & (np_seq2 != 45) & (np_seq1==np_seq2), dtype=np.float64)
     return (1-same/comm, int(comm), int(same))
@@ -598,30 +605,39 @@ def get_fasta_nparray_sp_score(fa_arr, return_col_sps = False):
     else:
         return sp_score, col_sps
 
-
-
-
-
 def nparr2str(nparr):
     '''
     Converts a 1-d numpy array to a python string using utf-8 encoding. Ideally used on an
     array of type uint8
-    :param nparr:
-    :return:
+    :param nparr: 1-d numpy array of type np.uint8
+    :return: String representation in utf-8 encoding
     '''
     return nparr[:].tobytes().decode('utf-8')
 
 def str2nparr(seq):
     '''
     Converts a python string to a 1d numpy array of type numpy.uint8.
-    :param seq:
+    :param seq: String representation of a sequence in utf-8 encoding
     :return:
     '''
     return np.frombuffer(bytes(seq, 'utf8'), dtype=np.uint8)
 
+def paste_list_from_excel():
+    '''Quick function to allow the user to paste a list in directly from excel and return a python
+    list.'''
+    mylist = []
+    a = 'tmp'
+    while len(a.strip()) > 0 and a is not None:
+        a = input()
+        if len(a.strip()) > 0:
+            mylist.append(a.strip())
+    return mylist
+
 def pdist(s1, s2, all=False):
     '''
-    returns the p-distance. Blanks are '-' ONLY.
+    Takes two strings as input and returns the p-distance. Blanks are '-' ONLY. This function is a bit
+    redundant with "compute_p_dist" earlier, but this has the option of using all sites instead of just
+    common sites.
     :param s1:
     :param s2:
     :return:
@@ -667,6 +683,8 @@ def compute_distinct_seq_aln_patterns(fasta_dict, return_numpy_array=False):
         return (n_seqs, n_pats)
 
 def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
+    '''Takes a target file path, sequence name list and sequence numpy array and writes them to a fasta
+    file.'''
     f = open(out_file_path,'w')
     for i in range(len(taxnames)):
         c = f.write('>%s\n' % taxnames[i])
@@ -675,8 +693,9 @@ def write_nparray_to_fasta(out_file_path, taxnames, fasta_nparr):
     # print ('wrote %s taxa names and sequences to the fasta file: %s' % (len(taxnames),out_file_path))
     f.close()
 
-
 def convert_raxml_reduced_to_fasta(raxml_reduced, fasta_output_path):
+    '''For whatever reason when RAxML creates the file with the "reduced" ending, it is not in a fasta
+    format, so this function converts it. '''
     red_f = open(raxml_reduced,'r')
     lw=red_f.readline()
 
@@ -689,6 +708,8 @@ def convert_raxml_reduced_to_fasta(raxml_reduced, fasta_output_path):
 
 
 def get_min_max_avg_sequence_length(fasta_file):
+    '''Takes a fasta file path as input, prints min/max/avg sequence lengths to the console.
+    '''
     a = read_from_fasta(fasta_file)
     mylens = map(len,a.values())
     m1 = max(mylens)
@@ -698,6 +719,10 @@ def get_min_max_avg_sequence_length(fasta_file):
 
 
 def sepp_json_to_tsv(in_path, out_path):
+    '''
+    Converts a jplace output to a tsv file with all of the relevant information.
+    TODO: document exactly what information is included.
+    '''
     if out_path[-4:] not in ('.tsv','.txt','.tab'):
         out_path += '.txt'
     inf=open(in_path,'r')
@@ -843,6 +868,7 @@ def seq_length_data_for_histogram(a):
     return list(map(len, a.values()))
 
 def bp_genbank_to_fasta(gbk_in):
+    '''Converts a genbank file to a fasta using BioPython as the parser.'''
     fasta_out = gbk_in[:-4] + '.fna'
     input_handle = open(gbk_in, "rU")
     output_handle = open(fasta_out, "w")
@@ -961,13 +987,17 @@ def bp_genbank_get_CDS_dict(filename):
     return cds, dna, name_pos, no_translation_loci, length_errors, f[:-3]
 
 def fasta_dict_to_string(fasta_dict):
+    '''Takes a fasta-dictionary and returns a long string representing the text content of the same thing formatted
+    as a fasta file.
+    '''
     a=''
     for i in fasta_dict.keys():
         a=a+'>'+i + '\n'
         a=a + fasta_dict[i] + '\n'
     return a
 
-def run_fastSP_on_two_fastas(ref_file,est_file,out=None):
+def FastSP_run_on_two_fastas(ref_file, est_file, out=None):
+    '''Calls FastSP and runs it on two fasta files. NOTE: FastSP location is hardcoded here.'''
     import subprocess
     if out==None:
         outf=open('temp.txt','w')
@@ -979,11 +1009,12 @@ def run_fastSP_on_two_fastas(ref_file,est_file,out=None):
     outf.close()
 
     p,f=os.path.split(os.path.abspath(est_file))
-    args=read_alignment_results_file(out,f)
+    args=FastSP_read_alignment_results_file(out,f)
     # os.unlink('temp.txt')
     return args
 
-def read_alignment_results_file(filepath=None,optional_filename=None):
+def FastSP_read_alignment_results_file(filepath=None,optional_filename=None):
+    '''Old function for reading and parsing the output of a FastSP run.'''
     pa, fi = os.path.split(filepath)
     myargs = {}
     if optional_filename!=None:
@@ -1018,7 +1049,8 @@ def read_alignment_results_file(filepath=None,optional_filename=None):
     return myargs
 
 def get_tree_error(ref_tree,est_tree):
-    import dendropy
+    '''See compare_trees script. This is essentially a copy of that but it takes two dendropy Tree objects as
+    function input.'''
     rt=dendropy.Tree()
     rt.read_from_path(ref_tree,schema='newick')
     et=dendropy.Tree()
@@ -1040,7 +1072,8 @@ def get_tree_error(ref_tree,est_tree):
 
     return args
 
-def make_alignment_header_and_entryline():
+def FastSP_make_alignment_header_and_entryline():
+    '''Old function for writing the output of FastSP to a tsv file.'''
     vals1list = ['sp', 'modeler', 'spfn', 'spfp', 'comp', 'tc']
     vals2list = ['maxlen', 'numseq', 'lenref', 'lenest', 'cells']
 
@@ -1050,7 +1083,8 @@ def make_alignment_header_and_entryline():
     str_line='%('+str_header.strip().replace('\t',')s\t%(') + ')s\n'
     return str_header, str_line
 
-def write_results_lines_to_file(args_list,out_file):
+def FastSP_write_results_lines_to_file(args_list,out_file):
+    '''Old function for writing the output of FastSP to a tsv file.'''
     outf=open(out_file,'w')
     vals1list = ['sp', 'modeler', 'spfn', 'spfp', 'comp', 'tc']
     vals2list = ['maxlen', 'numseq', 'lenref', 'lenest', 'cells']
@@ -1233,6 +1267,7 @@ def write_dict_to_file(mydict, filepath, delimiter='\t'):
 bin8 = lambda x: ''.join(['0',]*(8-(len(format(x,'b'))%8) ))+format(x,'b')
 
 def get_file_md5_digest(file_path):
+    '''Wraps the hashlib md5 function'''
     import hashlib
     with open(file_path,'rb') as fb:
         hd=hashlib.md5(fb.read()).hexdigest()
@@ -1298,6 +1333,8 @@ def read_alignment_stats_file(filepath):
         return args
 
 def shrink_fasta_to_complement_of_another(bigfile,subtractfile,outfile):
+    '''Sort of self-eplanatory. If you have a big fasta, and another one that contains some of those sequences, this
+    function subtracts out the overlapping sequence names and writes the remaining sequences to an output fasta.'''
     f1=read_from_fasta(bigfile)
     f2=read_from_fasta(subtractfile)
     newkeys=list(set(f1.keys()).difference(set(f2.keys())))
@@ -1403,12 +1440,3 @@ def int_vs_node_brlens(fp):
     print("                Ct           \tAvg Len      \tSD Len       \tCoef Var      ")
     print("Internal Nodes  %s         \t%.5f  \t%.5f  \t%.5f" % (ct, int_avg, int_sd, int_cv))
     print("Leaf Nodes      %s         \t%.5f  \t%.5f  \t%.5f" % (ct_lf, lf_avg, lf_sd, lf_cv))
-
-
-
-if __name__=='__main__':
-    if '-h' in sys.argv:
-        help()
-    elif '-pbs' in sys.argv:
-        pbsargs=parse_pbs_args()
-        make_pbs_file(*pbsargs)
